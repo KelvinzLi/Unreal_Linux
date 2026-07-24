@@ -66,6 +66,15 @@ RESTORE_UNBAKED = os.environ.get(
 SEQUENCE_OVERRIDE = os.environ.get(
     "BEDLAM_RUNTIME_SEQUENCE_OVERRIDE", ""
 )
+CUSTOM_START_FRAME = os.environ.get("BEDLAM_RUNTIME_START_FRAME", "")
+CUSTOM_END_FRAME = os.environ.get("BEDLAM_RUNTIME_END_FRAME", "")
+JOB_LIMIT = int(os.environ.get("BEDLAM_RUNTIME_JOB_LIMIT", "0"))
+PRESERVE_BEDLAM_LAYOUT = os.environ.get(
+    "BEDLAM_RUNTIME_PRESERVE_BEDLAM_LAYOUT", "0"
+).lower() in ("1", "true", "yes", "on")
+IMAGE_TEMPORAL_SAMPLES = int(os.environ.get(
+    "BEDLAM_RUNTIME_IMAGE_TEMPORAL_SAMPLES", "0"
+))
 
 RUN_ID = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 CSV_PATH = os.path.join(PROBE_DIR, f"runtime_camera_{RUN_ID}.csv")
@@ -206,6 +215,14 @@ def value_text(value):
         if result is not None:
             return str(result)
     return str(value)
+
+
+def get_sequence_base_name(job_name):
+    if job_name.endswith("_exr_depth"):
+        return job_name[:-10]
+    if job_name.endswith("_exr"):
+        return job_name[:-4]
+    return job_name
 
 
 def vec_values(value):
@@ -823,6 +840,12 @@ def start_render():
     if not jobs:
         raise RuntimeError("The saved MRQ queue contains no jobs")
 
+    if JOB_LIMIT > 0:
+        queue = subsystem.get_queue()
+        for job in list(jobs[JOB_LIMIT:]):
+            queue.delete_job(job)
+        jobs = queue.get_jobs()
+
     for index, job in enumerate(jobs):
         if SEQUENCE_OVERRIDE:
             job.set_editor_property(
@@ -830,17 +853,53 @@ def start_render():
                 unreal.SoftObjectPath(SEQUENCE_OVERRIDE),
             )
         config = job.get_configuration()
+        antialiasing = config.find_or_add_setting_by_class(
+            unreal.MoviePipelineAntiAliasingSetting
+        )
+        job_name = str(safe_property(job, "job_name"))
+        if (
+            IMAGE_TEMPORAL_SAMPLES > 0
+            and job_name.endswith("_exr")
+            and not job_name.endswith("_exr_depth")
+        ):
+            antialiasing.set_editor_property(
+                "temporal_sample_count", IMAGE_TEMPORAL_SAMPLES
+            )
         output = config.find_or_add_setting_by_class(
             unreal.MoviePipelineOutputSetting
         )
         directory = unreal.DirectoryPath()
-        directory.set_editor_property("path", RENDER_DIR)
+        sequence_name = get_sequence_base_name(job_name)
+        if PRESERVE_BEDLAM_LAYOUT:
+            pass_directory = (
+                "exr_depth" if job_name.endswith("_exr_depth")
+                else "exr_image" if job_name.endswith("_exr")
+                else "png"
+            )
+            render_path = os.path.join(
+                RENDER_DIR, pass_directory, sequence_name
+            )
+        else:
+            render_path = RENDER_DIR
+        directory.set_editor_property("path", render_path)
         output.set_editor_property("output_directory", directory)
+        if CUSTOM_START_FRAME or CUSTOM_END_FRAME:
+            output.set_editor_property("use_custom_playback_range", True)
+            if CUSTOM_START_FRAME:
+                output.set_editor_property(
+                    "custom_start_frame", int(CUSTOM_START_FRAME)
+                )
+            if CUSTOM_END_FRAME:
+                output.set_editor_property(
+                    "custom_end_frame", int(CUSTOM_END_FRAME)
+                )
         unreal.log_warning(
             "[RUNTIME_PROBE] Queue job "
             f"{index}: name={safe_property(job, 'job_name')}, "
             f"sequence={value_text(safe_property(job, 'sequence'))}, "
-            f"output={RENDER_DIR}"
+            f"spatial_samples={safe_property(antialiasing, 'spatial_sample_count')}, "
+            f"temporal_samples={safe_property(antialiasing, 'temporal_sample_count')}, "
+            f"output={render_path}"
         )
 
     unreal.log_warning(

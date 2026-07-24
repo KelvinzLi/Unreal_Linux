@@ -15,9 +15,9 @@ MAP=/Game/SciFiModularOutpost/Maps/ShowCase
 PROBE_SCRIPT=/athenahomes/kelvin/projects/Syn4D/unreal_linux/python/diagnostic/probe_mrq_runtime_camera.py
 
 RUN_TAG="${SLURM_JOB_ID:-manual}_$(date +%Y%m%d_%H%M%S)"
-export BEDLAM_RUNTIME_PROBE_DIR="/work/kelvin/unreal_logs/bedlam_camera_runtime/${RUN_TAG}"
-export BEDLAM_RUNTIME_RENDER_DIR="/work/kelvin/bedlam2/images/kaggle_eval/sim/outpost_ue53_runtime_probe/${RUN_TAG}"
-export BEDLAM_RUNTIME_START_DELAY=15
+export BEDLAM_RUNTIME_PROBE_DIR="${BEDLAM_RUNTIME_PROBE_DIR:-/work/kelvin/unreal_logs/bedlam_camera_runtime/${RUN_TAG}}"
+export BEDLAM_RUNTIME_RENDER_DIR="${BEDLAM_RUNTIME_RENDER_DIR:-/work/kelvin/bedlam2/images/kaggle_eval/sim/outpost_ue53_runtime_probe/${RUN_TAG}}"
+export BEDLAM_RUNTIME_START_DELAY="${BEDLAM_RUNTIME_START_DELAY:-15}"
 export BEDLAM_RUNTIME_FORCE_LOOKAT="${BEDLAM_RUNTIME_FORCE_LOOKAT:-0}"
 export BEDLAM_RUNTIME_TICK_GROUP_FIX="${BEDLAM_RUNTIME_TICK_GROUP_FIX:-0}"
 export BEDLAM_RUNTIME_TICK_PREREQUISITE_FIX="${BEDLAM_RUNTIME_TICK_PREREQUISITE_FIX:-1}"
