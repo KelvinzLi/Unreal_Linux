@@ -75,6 +75,9 @@ PRESERVE_BEDLAM_LAYOUT = os.environ.get(
 IMAGE_TEMPORAL_SAMPLES = int(os.environ.get(
     "BEDLAM_RUNTIME_IMAGE_TEMPORAL_SAMPLES", "0"
 ))
+WRITE_DONE_MARKERS = os.environ.get(
+    "BEDLAM_RUNTIME_WRITE_DONE_MARKERS", "0"
+).lower() in ("1", "true", "yes", "on")
 
 RUN_ID = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 CSV_PATH = os.path.join(PROBE_DIR, f"runtime_camera_{RUN_ID}.csv")
@@ -175,6 +178,8 @@ _cached_world = None
 _cached_actors = {}
 _configured_camera = None
 _configured_controller = None
+_expected_jobs_by_sequence = {}
+_finished_jobs_by_sequence = {}
 
 
 def safe_call(obj, name, *args):
@@ -784,12 +789,40 @@ def quit_editor():
     unreal.SystemLibrary.execute_console_command(None, "QUIT_EDITOR")
 
 
+def write_sequence_done_marker(sequence_name):
+    marker_dir = os.path.join(RENDER_DIR, "post_ready")
+    os.makedirs(marker_dir, exist_ok=True)
+    marker_path = os.path.join(marker_dir, f"{sequence_name}.done")
+    expected_jobs = sorted(
+        _expected_jobs_by_sequence.get(sequence_name, set())
+    )
+    with open(marker_path, "w", encoding="utf-8") as marker_file:
+        marker_file.write("status=done\n")
+        marker_file.write(f"sequence={sequence_name}\n")
+        marker_file.write(f"jobs={','.join(expected_jobs)}\n")
+    unreal.log_warning(
+        f"[RUNTIME_PROBE] Wrote BEDLAM done marker: {marker_path}"
+    )
+
+
 def on_job_finished(job, success):
+    job_name = str(safe_property(job, "job_name"))
+    sequence_name = get_sequence_base_name(job_name)
     unreal.log_warning(
         "[RUNTIME_PROBE] Job finished: "
-        f"name={safe_property(job, 'job_name')}, success={success}, "
+        f"name={job_name}, success={success}, "
         f"rows={_sample_index}"
     )
+    if not success or not WRITE_DONE_MARKERS:
+        return
+
+    finished_jobs = _finished_jobs_by_sequence.setdefault(
+        sequence_name, set()
+    )
+    finished_jobs.add(job_name)
+    expected_jobs = _expected_jobs_by_sequence.get(sequence_name, set())
+    if expected_jobs and expected_jobs.issubset(finished_jobs):
+        write_sequence_done_marker(sequence_name)
 
 
 def on_queue_finished(executor, success):
@@ -809,6 +842,8 @@ def start_render():
     global _executor
     global _csv_file
     global _writer
+    global _expected_jobs_by_sequence
+    global _finished_jobs_by_sequence
 
     os.makedirs(PROBE_DIR, exist_ok=True)
     os.makedirs(RENDER_DIR, exist_ok=True)
@@ -846,6 +881,8 @@ def start_render():
             queue.delete_job(job)
         jobs = queue.get_jobs()
 
+    _expected_jobs_by_sequence = {}
+    _finished_jobs_by_sequence = {}
     for index, job in enumerate(jobs):
         if SEQUENCE_OVERRIDE:
             job.set_editor_property(
@@ -857,6 +894,11 @@ def start_render():
             unreal.MoviePipelineAntiAliasingSetting
         )
         job_name = str(safe_property(job, "job_name"))
+        sequence_name = get_sequence_base_name(job_name)
+        _expected_jobs_by_sequence.setdefault(
+            sequence_name, set()
+        ).add(job_name)
+        _finished_jobs_by_sequence.setdefault(sequence_name, set())
         if (
             IMAGE_TEMPORAL_SAMPLES > 0
             and job_name.endswith("_exr")
@@ -869,7 +911,6 @@ def start_render():
             unreal.MoviePipelineOutputSetting
         )
         directory = unreal.DirectoryPath()
-        sequence_name = get_sequence_base_name(job_name)
         if PRESERVE_BEDLAM_LAYOUT:
             pass_directory = (
                 "exr_depth" if job_name.endswith("_exr_depth")
