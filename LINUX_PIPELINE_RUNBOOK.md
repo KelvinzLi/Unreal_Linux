@@ -239,7 +239,7 @@ transform-curve discontinuity.
 The launcher is:
 
 ```text
-/athenahomes/kelvin/projects/Syn4D/unreal_linux/run_ue53_bedlam_runtime_probe.slurm
+/athenahomes/kelvin/projects/Syn4D/unreal_linux/scripts/run_ue53_bedlam_render.sh
 ```
 
 Despite its historical name, it now supports the production BEDLAM folder
@@ -256,7 +256,7 @@ env \
   BEDLAM_RUNTIME_PRESERVE_BEDLAM_LAYOUT=1 \
   BEDLAM_RUNTIME_IMAGE_TEMPORAL_SAMPLES=0 \
   BEDLAM_RUNTIME_WRITE_DONE_MARKERS=1 \
-  bash /athenahomes/kelvin/projects/Syn4D/unreal_linux/run_ue53_bedlam_runtime_probe.slurm
+  bash /athenahomes/kelvin/projects/Syn4D/unreal_linux/scripts/run_ue53_bedlam_render.sh
 ```
 
 `BEDLAM_RUNTIME_IMAGE_TEMPORAL_SAMPLES=0` means “do not override the saved MRQ
@@ -909,3 +909,57 @@ use the same UE build, RHI/shader model, GPU architecture and driver, MRQ
 preset, project assets, and post-processing transform. A practical acceptance
 threshold should be defined from the downstream task rather than from visual
 similarity alone.
+
+## 18. Linux throw simulation
+
+The Linux wrapper invokes the simulation implementation directly from
+`Syn4d_renderer` rather than maintaining a second copied implementation:
+
+```text
+/athenahomes/kelvin/projects/Syn4D/Syn4d_renderer/unreal/render/Core/Python/tools/sim_throw_csv_objects_batch.py
+/athenahomes/kelvin/projects/Syn4D/Syn4d_renderer/unreal/render/Core/Python/tools/sim_throw_csv_objects.py
+```
+
+The Linux-specific entry points are:
+
+```text
+/athenahomes/kelvin/projects/Syn4D/unreal_linux/scripts/run_ue53_throw_simulation.sh
+/athenahomes/kelvin/projects/Syn4D/unreal_linux/python/run_throw_simulation_batch.py
+```
+
+The wrapper launches full `UnrealEditor` because the implementation requires
+PIE simulation and Slate tick callbacks. It cannot run in ordinary CPython.
+The default Street paths are:
+
+```text
+project: /work/kelvin/unreal_linux/simulation_tests/projects/VictorianStreet/VictorianStreet.uproject
+map:     /Game/VictorianStreet/Maps/Showcase
+input:   /work/kelvin/unreal_linux/simulation_tests/inputs/street/be_seq_base.csv
+output:  /work/kelvin/unreal_linux/simulation_tests/outputs/street
+```
+
+Run a one-sequence smoke test first:
+
+```bash
+BEDLAM_SIM_LIMIT=1 \
+BEDLAM_SIM_NUM_THROW_OBJECTS=3 \
+BEDLAM_SIM_MAX_RESIMULATION_ATTEMPTS=1 \
+bash /athenahomes/kelvin/projects/Syn4D/unreal_linux/scripts/run_ue53_throw_simulation.sh \
+  2>&1 | tee /work/kelvin/unreal_linux/simulation_tests/logs/street/smoke_test.log
+```
+
+For the requested full configuration, omit the smoke-test overrides. Launcher
+defaults are 20 objects, scale multiplier 0.5, physics substepping at 480 Hz,
+32 maximum substeps, eight resimulation attempts, and seed 12345. A zero
+`BEDLAM_SIM_LIMIT` selects every sequence.
+
+The generated files include `be_seq_sim.csv`, `_batch_tmp/`, diagnostics, and
+`linux_simulation_status.json`. The status is `complete` only when both the
+final CSV and batch diagnostics exist. The wrapper then requests Unreal Editor
+to exit. Set `PROJECT`, `MAP`, input, output, and simulation parameters through
+environment variables rather than editing the upstream simulation scripts.
+
+The simulation creates and replaces the temporary project asset
+`/Game/BedlamDebug/LS_CsvObjectsThrowTest`. It also changes physics substep
+settings in the running editor process. Use a disposable project copy and do
+not run two simulations concurrently against the same project or output path.

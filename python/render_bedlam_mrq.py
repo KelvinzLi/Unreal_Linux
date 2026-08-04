@@ -5,7 +5,7 @@ the runtime camera state from the same Unreal process that produces the images.
 Run this with the full Unreal Editor (not -game and not -nullrhi), for example:
 
     UnrealEditor PROJECT MAP \
-      -ExecutePythonScript=/absolute/path/probe_mrq_runtime_camera.py \
+      -ExecutePythonScript=/absolute/path/render_bedlam_mrq.py \
       -RenderOffscreen -vulkan -unattended -NoSplash \
       -stdout -FullStdOutLogOutput
 
@@ -72,6 +72,9 @@ JOB_LIMIT = int(os.environ.get("BEDLAM_RUNTIME_JOB_LIMIT", "0"))
 PRESERVE_BEDLAM_LAYOUT = os.environ.get(
     "BEDLAM_RUNTIME_PRESERVE_BEDLAM_LAYOUT", "0"
 ).lower() in ("1", "true", "yes", "on")
+IMAGE_SPATIAL_SAMPLES = int(os.environ.get(
+    "BEDLAM_RUNTIME_IMAGE_SPATIAL_SAMPLES", "0"
+))
 IMAGE_TEMPORAL_SAMPLES = int(os.environ.get(
     "BEDLAM_RUNTIME_IMAGE_TEMPORAL_SAMPLES", "0"
 ))
@@ -899,6 +902,14 @@ def start_render():
             sequence_name, set()
         ).add(job_name)
         _finished_jobs_by_sequence.setdefault(sequence_name, set())
+        if (
+            IMAGE_SPATIAL_SAMPLES > 0
+            and job_name.endswith("_exr")
+            and not job_name.endswith("_exr_depth")
+        ):
+            antialiasing.set_editor_property(
+                "spatial_sample_count", IMAGE_SPATIAL_SAMPLES
+            )
         if (
             IMAGE_TEMPORAL_SAMPLES > 0
             and job_name.endswith("_exr")
