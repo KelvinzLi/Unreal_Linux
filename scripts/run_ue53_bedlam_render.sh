@@ -4,7 +4,6 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=96G
-#SBATCH --time=02:00:00
 #SBATCH --output=/work/kelvin/unreal_logs/bedlam_render_%j.out
 
 set -euo pipefail
