@@ -1,7 +1,7 @@
 # BEDLAM2 Unreal Linux rendering and post-processing runbook
 
 This document records the working BEDLAM2 pipeline on the Oxford Linux
-cluster as of 25 July 2026. It covers the UE 5.3.2 installation, BEDLAM
+cluster as of 4 August 2026. It covers the UE 5.3.2 installation, BEDLAM
 plugins and engine content, deterministic camera evaluation, BEDLAM output
 layout and metadata, the Linux EXR fix, and the Syn4D post-processing changes.
 
@@ -79,21 +79,34 @@ test -f /scratch/shared/beegfs/kelvin/apps/Linux_Unreal_Engine_5.3.2/Engine/Cont
 
 ## 4. BEDLAM camera-shake plugin
 
-The original Windows/UE 5.3 plugin was rebuilt for Linux and installed
-project-locally:
+The original Windows/UE 5.3 plugin was rebuilt for Linux. It is now installed
+once at engine level so every UE 5.3.2 project can use the same Linux build:
 
 ```text
-/scratch/shared/beegfs/kelvin/apps/UnrealProjects/UE_5.3.2/SciFiModularOutpost/Plugins/BEDLAM
+/scratch/shared/beegfs/kelvin/apps/Linux_Unreal_Engine_5.3.2/Engine/Plugins/BEDLAM
 ```
 
 The working binary is:
 
 ```text
-Plugins/BEDLAM/Binaries/Linux/libUnrealEditor-BEDLAM.so
+/scratch/shared/beegfs/kelvin/apps/Linux_Unreal_Engine_5.3.2/Engine/Plugins/BEDLAM/Binaries/Linux/libUnrealEditor-BEDLAM.so
 ```
 
 The plugin declares `GameplayCameras` and its Build.cs includes that module as
-a dependency. It is enabled in `SciFiModularOutpost.uproject`.
+a dependency. Each project that needs it must still enable `BEDLAM` in its
+`.uproject`; it no longer needs its own copied `Plugins/BEDLAM` directory.
+
+The engine installation was copied from the known-working Linux build archived
+with the earlier UE 5.3.2 project:
+
+```text
+/scratch/shared/beegfs/kelvin/apps/cache/UnrealProjects/UE_5.3.2/SciFiModularOutpost/Plugins/BEDLAM
+```
+
+The source and installed copies were checksum-verified after copying. This is
+a real engine-plugin directory, not a symbolic link. Keeping one engine copy
+avoids project-by-project duplication and ensures that all projects load the
+same binary.
 
 The original Windows plugin backup is:
 
@@ -103,6 +116,53 @@ The original Windows plugin backup is:
 
 This plugin restores deterministic BEDLAM camera shake. It did not fix either
 the basic look-at target or the random camera direction changes by itself.
+
+### Bridge plugin
+
+Bridge is Quixel's editor-side asset browsing/import integration. The official
+Linux UE 5.3 package is installed engine-wide:
+
+```text
+/scratch/shared/beegfs/kelvin/apps/Linux_Unreal_Engine_5.3.2/Engine/Plugins/Bridge
+```
+
+Installed package and compatibility details:
+
+```text
+Archive:       /work/kelvin/unreal_plugins/Linux_Bridge_5.3.0_2023.0.8.zip
+Bridge:        2023.0.8
+EngineVersion: 5.3.0
+BuildId:       27405482
+```
+
+The plugin BuildId exactly matches the UE 5.3.2 engine BuildId. It contains
+Linux binaries for both `Bridge` and `MegascansPlugin`. A Vulkan smoke test
+with VictorianStreet mounted Bridge, BEDLAM, and the engine
+MovieRenderPipeline together and exited cleanly without missing-module or
+incompatible-plugin errors.
+
+Bridge is enabled again in the uploaded projects that declare it. A Windows
+Bridge installation must still not be copied over this directory because its
+compiled binaries are platform-specific.
+
+Bridge is not required to render already imported assets unless those assets
+retain package references to Bridge-owned material presets. Before disabling
+Bridge for the currently uploaded projects, their `.uasset` and `.umap` files
+were scanned for the relevant package paths:
+
+```text
+/Bridge/MSPresets
+/MegascansPlugin/
+MSPresets
+```
+
+No such references were found in Antiquity3D, the BE_IBL variants,
+SYN4D_BigOffice, SciFiModularOutpost, TriplexHouseVilla, or VictorianStreet.
+Some assets contain ordinary scene directories named `Bridge`; those are not
+plugin dependencies. This means Bridge is not required for the visual output
+of those existing assets, but keeping the compatible Linux plugin enabled
+preserves the projects' original editor/import setup. Repeat the dependency
+scan for newly received projects and never delete imported Megascans assets.
 
 ## 5. BEDLAM Movie Render Pipeline metadata
 
@@ -910,7 +970,60 @@ preset, project assets, and post-processing transform. A practical acceptance
 threshold should be defined from the downstream task rather than from visual
 similarity alone.
 
-## 18. Linux throw simulation
+## 18. Generated Level Sequence and MRQ assets
+
+The generation launchers keep Unreal's required virtual asset paths:
+
+```text
+/Game/Bedlam/LevelSequences
+/Game/Bedlam/MovieRenderQueue
+```
+
+The corresponding project directories are symlinks into the selected output
+asset store. For the default Street workflow, the physical layout is:
+
+```text
+/work/kelvin/unreal_linux/simulation_tests/outputs/street/unreal_assets/
+├── LevelSequences/
+├── MovieRenderQueue/
+├── linux_camera_sampling_status.json
+├── linux_level_sequence_status.json
+└── linux_mrq_generation_status.json
+```
+
+The launchers create missing links and may repoint an existing symlink to a
+different `BEDLAM_GENERATED_ASSET_STORE`. They refuse to replace a real
+project directory. Move, archive, or remove an old generated directory before
+the first linked run. Regenerating the same asset name still replaces that
+asset within the selected store.
+
+Level Sequence generation verifies the exact map, required BEDLAM camera
+actors, non-empty unique CSV sequence names, and generated asset types. It
+disables the upstream Windows geometry-cache OBJ export by default. MRQ
+generation reads the completed Level Sequence status as its manifest, so
+stale assets in the directory are not queued. It validates the saved queue and
+job count. Both shell launchers return failure unless their status manifest is
+`complete`.
+
+Camera sampling uses the same Level Sequence symlink and asset store. Its
+launcher recreates or verifies the link before Unreal starts, requires the
+completed Level Sequence manifest, and verifies that every expected `.uasset`
+exists physically in the selected store. It checks the exact loaded map and
+`BE_CameraTarget`, removes stale generated camera CSV/JSON outputs, and writes
+`linux_camera_sampling_status.json`. The expected camera count is taken from
+the sampler's generated state instead of being fixed at 16. The shell command
+returns failure unless the status is `complete`, including when Unreal itself
+exits zero after a Python error.
+
+Entry points:
+
+```text
+/athenahomes/kelvin/projects/Syn4D/unreal_linux/scripts/run_ue53_create_level_sequences.sh
+/athenahomes/kelvin/projects/Syn4D/unreal_linux/scripts/run_ue53_camera_sampling.sh
+/athenahomes/kelvin/projects/Syn4D/unreal_linux/scripts/run_ue53_create_movie_render_queue.sh
+```
+
+## 19. Linux throw simulation
 
 The Linux wrapper invokes the simulation implementation directly from
 `Syn4d_renderer` rather than maintaining a second copied implementation:
@@ -963,3 +1076,22 @@ The simulation creates and replaces the temporary project asset
 `/Game/BedlamDebug/LS_CsvObjectsThrowTest`. It also changes physics substep
 settings in the running editor process. Use a disposable project copy and do
 not run two simulations concurrently against the same project or output path.
+# Single-session camera-placement preparation
+
+Use `scripts/run_ue53_camera_placement_to_mrq_workflow.sh` to turn a provided
+base CSV into the final multicamera CSV, Level Sequences, and MRQ without
+restarting Unreal between stages. The workflow generates temporary validation
+sequences, runs scheduled collision-validated camera sampling, validates and
+atomically promotes `be_seq_base_multicam.csv` to `be_seq.csv`, deletes only
+the generated validation assets, rebuilds final sequences, and creates MRQ.
+
+The default camera-placement contract is 32 base sequences, nine cameras per
+base sequence, 288 final Level Sequences, and 576 MRQ jobs for preset
+`1-1-1_EXR_PNG_DepthMask`. Counts are derived from the provided base CSV and
+validated at every hand-off. The final CSV is not replaced if camera sampling
+fails. Existing Level Sequence and MRQ assets in the selected dedicated asset
+store are cleared after the requested map and asset registry are ready.
+
+The overall checkpoint is
+`unreal_assets/linux_camera_to_mrq_workflow_status.json`; individual stage
+status files remain beside it for diagnosis and resumption decisions.
