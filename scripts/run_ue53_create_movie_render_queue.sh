@@ -2,16 +2,25 @@
 
 set -euo pipefail
 
-UE_ROOT="${UE_ROOT:-/scratch/shared/beegfs/kelvin/apps/Linux_Unreal_Engine_5.3.2}"
-PROJECT="${PROJECT:-/work/kelvin/unreal_linux/simulation_tests/projects/VictorianStreet/VictorianStreet.uproject}"
-MAP="${MAP:-/Game/VictorianStreet/Maps/Showcase}"
-MAP_FILE="${MAP_FILE:-/work/kelvin/unreal_linux/simulation_tests/projects/VictorianStreet/Content/VictorianStreet/Maps/Showcase.umap}"
-WRAPPER="${WRAPPER:-/athenahomes/kelvin/projects/Syn4D/unreal_linux/python/run_create_movie_render_queue.py}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/lib/generated_asset_store.sh"
+source "$SCRIPT_DIR/lib/load_config.sh"
+load_bedlam_config
+
+UE_ROOT="${UE_ROOT:-}"
+PROJECT="${PROJECT:-}"
+MAP="${MAP:-}"
+MAP_FILE="${MAP_FILE:-}"
+WRAPPER="${WRAPPER:-$REPO_ROOT/python/run_create_movie_render_queue.py}"
+require_bedlam_setting UE_ROOT
+require_bedlam_setting PROJECT
+require_bedlam_setting MAP
+require_bedlam_setting MAP_FILE
+require_bedlam_setting BEDLAM_MRQ_OUTPUT_DIR
 
 export BEDLAM_MRQ_GENERATOR_SCRIPT="${BEDLAM_MRQ_GENERATOR_SCRIPT:-$UE_ROOT/Engine/Content/PS/Bedlam/Core/Python/create_movie_render_queue.py}"
-export BEDLAM_MRQ_OUTPUT_DIR="${BEDLAM_MRQ_OUTPUT_DIR:-/work/kelvin/unreal_linux/simulation_tests/renders/street}"
+export BEDLAM_MRQ_OUTPUT_DIR
 export BEDLAM_MRQ_PRESET="${BEDLAM_MRQ_PRESET:-1-1-1_EXR_PNG_DepthMask}"
 export BEDLAM_MRQ_RESOLUTION="${BEDLAM_MRQ_RESOLUTION:-1280x720}"
 export BEDLAM_MRQ_EXPECTED_MAP="${BEDLAM_MRQ_EXPECTED_MAP:-$MAP}"

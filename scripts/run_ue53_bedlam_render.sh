@@ -4,18 +4,27 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=96G
-#SBATCH --output=/work/kelvin/unreal_logs/bedlam_render_%j.out
+# Configure Slurm output with sbatch --output; paths in #SBATCH directives
+# cannot be read from config/local.sh.
 
 set -euo pipefail
 
-UE_ROOT="${UE_ROOT:-/scratch/shared/beegfs/kelvin/apps/Linux_Unreal_Engine_5.3.2}"
-PROJECT="${PROJECT:-/scratch/shared/beegfs/kelvin/apps/UnrealProjects/UE_5.3.2/SciFiModularOutpost/SciFiModularOutpost.uproject}"
-MAP="${MAP:-/Game/SciFiModularOutpost/Maps/ShowCase}"
-RENDER_SCRIPT="${RENDER_SCRIPT:-/athenahomes/kelvin/projects/Syn4D/unreal_linux/python/render_bedlam_mrq.py}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$SCRIPT_DIR/lib/load_config.sh"
+load_bedlam_config
+
+UE_ROOT="${UE_ROOT:-}"
+PROJECT="${PROJECT:-}"
+MAP="${MAP:-}"
+RENDER_SCRIPT="${RENDER_SCRIPT:-$REPO_ROOT/python/render_bedlam_mrq.py}"
+require_bedlam_setting UE_ROOT
+require_bedlam_setting PROJECT
+require_bedlam_setting MAP
 
 RUN_TAG="${SLURM_JOB_ID:-manual}_$(date +%Y%m%d_%H%M%S)"
-export BEDLAM_RUNTIME_PROBE_DIR="${BEDLAM_RUNTIME_PROBE_DIR:-/work/kelvin/unreal_logs/bedlam_camera_runtime/${RUN_TAG}}"
-export BEDLAM_RUNTIME_RENDER_DIR="${BEDLAM_RUNTIME_RENDER_DIR:-/work/kelvin/bedlam2/images/kaggle_eval/sim/outpost_ue53_runtime_probe/${RUN_TAG}}"
+export BEDLAM_RUNTIME_PROBE_DIR="${BEDLAM_RUNTIME_PROBE_DIR:-${BEDLAM_LOG_ROOT:-$PWD/unreal_logs}/bedlam_camera_runtime/${RUN_TAG}}"
+export BEDLAM_RUNTIME_RENDER_DIR="${BEDLAM_RUNTIME_RENDER_DIR:-${BEDLAM_OUTPUT_ROOT:-$PWD/render_outputs}/${RUN_TAG}}"
 export BEDLAM_RUNTIME_START_DELAY="${BEDLAM_RUNTIME_START_DELAY:-15}"
 export BEDLAM_RUNTIME_FORCE_LOOKAT="${BEDLAM_RUNTIME_FORCE_LOOKAT:-0}"
 export BEDLAM_RUNTIME_TICK_GROUP_FIX="${BEDLAM_RUNTIME_TICK_GROUP_FIX:-0}"

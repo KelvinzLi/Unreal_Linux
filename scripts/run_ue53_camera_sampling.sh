@@ -2,18 +2,28 @@
 
 set -euo pipefail
 
-UE_ROOT="${UE_ROOT:-/scratch/shared/beegfs/kelvin/apps/Linux_Unreal_Engine_5.3.2}"
-PROJECT="${PROJECT:-/work/kelvin/unreal_linux/simulation_tests/projects/VictorianStreet/VictorianStreet.uproject}"
-MAP="${MAP:-/Game/VictorianStreet/Maps/Showcase}"
-MAP_FILE="${MAP_FILE:-/work/kelvin/unreal_linux/simulation_tests/projects/VictorianStreet/Content/VictorianStreet/Maps/Showcase.umap}"
-WRAPPER="${WRAPPER:-/athenahomes/kelvin/projects/Syn4D/unreal_linux/python/run_camera_sampling.py}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/lib/generated_asset_store.sh"
+source "$SCRIPT_DIR/lib/load_config.sh"
+load_bedlam_config
 
-export BEDLAM_CAMERA_SAMPLING_SCRIPT="${BEDLAM_CAMERA_SAMPLING_SCRIPT:-/athenahomes/kelvin/projects/Syn4D/Syn4d_renderer/unreal/render/Core/Python/tools/camera_sampling/generate_validated_orbit_camera_animations.py}"
-export BEDLAM_CAMERA_SAMPLING_CSV_PATH="${BEDLAM_CAMERA_SAMPLING_CSV_PATH:-/work/kelvin/unreal_linux/simulation_tests/outputs/street/be_seq_sim.csv}"
-export BEDLAM_CAMERA_SAMPLING_OUTPUT_CSV="${BEDLAM_CAMERA_SAMPLING_OUTPUT_CSV:-/work/kelvin/unreal_linux/simulation_tests/outputs/street/be_seq_sim_multicam.csv}"
-export BEDLAM_CAMERA_SAMPLING_OUTPUT_JSON="${BEDLAM_CAMERA_SAMPLING_OUTPUT_JSON:-/work/kelvin/unreal_linux/simulation_tests/outputs/street/be_camera_animations.json}"
+UE_ROOT="${UE_ROOT:-}"
+PROJECT="${PROJECT:-}"
+MAP="${MAP:-}"
+MAP_FILE="${MAP_FILE:-}"
+WRAPPER="${WRAPPER:-$REPO_ROOT/python/run_camera_sampling.py}"
+require_bedlam_setting UE_ROOT
+require_bedlam_setting PROJECT
+require_bedlam_setting MAP
+require_bedlam_setting MAP_FILE
+require_bedlam_setting SYN4D_RENDERER_ROOT
+require_bedlam_setting BEDLAM_CAMERA_SAMPLING_CSV_PATH
+
+export BEDLAM_CAMERA_SAMPLING_SCRIPT="${BEDLAM_CAMERA_SAMPLING_SCRIPT:-$SYN4D_RENDERER_ROOT/unreal/render/Core/Python/tools/camera_sampling/generate_validated_orbit_camera_animations.py}"
+export BEDLAM_CAMERA_SAMPLING_CSV_PATH
+export BEDLAM_CAMERA_SAMPLING_OUTPUT_CSV="${BEDLAM_CAMERA_SAMPLING_OUTPUT_CSV:-$(dirname "$BEDLAM_CAMERA_SAMPLING_CSV_PATH")/be_seq_multicam.csv}"
+export BEDLAM_CAMERA_SAMPLING_OUTPUT_JSON="${BEDLAM_CAMERA_SAMPLING_OUTPUT_JSON:-$(dirname "$BEDLAM_CAMERA_SAMPLING_CSV_PATH")/be_camera_animations.json}"
 export BEDLAM_CAMERA_SAMPLING_SEQUENCE_ROOT="${BEDLAM_CAMERA_SAMPLING_SEQUENCE_ROOT:-/Game/Bedlam/LevelSequences}"
 export BEDLAM_CAMERA_SAMPLING_SEED="${BEDLAM_CAMERA_SAMPLING_SEED:-}"
 export BEDLAM_CAMERA_SAMPLING_EXPECTED_MAP="${BEDLAM_CAMERA_SAMPLING_EXPECTED_MAP:-$MAP}"

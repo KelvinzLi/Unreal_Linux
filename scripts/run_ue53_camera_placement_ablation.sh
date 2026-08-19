@@ -14,10 +14,16 @@ INPUT_CSV="$4"
 DATASET_DIR="$(cd "$(dirname "$INPUT_CSV")" && pwd)"
 ASSET_STORE="${5:-$DATASET_DIR/unreal_assets}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$SCRIPT_DIR/lib/load_config.sh"
+load_bedlam_config
+require_bedlam_setting SYN4D_RENDERER_ROOT
+BEDLAM_CAMERA_ABLATION_SCRIPT="${BEDLAM_CAMERA_ABLATION_SCRIPT:-$SYN4D_RENDERER_ROOT/unreal/render/Core/Python/tools/camera_sampling/generate_validated_orbit_camera_animations_ablation.py}"
+test -f "$BEDLAM_CAMERA_ABLATION_SCRIPT"
 
 export PROJECT MAP MAP_FILE
 export BEDLAM_CAMERA_SAMPLING_PRESET="camera_placement_9"
-export BEDLAM_CAMERA_SAMPLING_SCRIPT="/athenahomes/kelvin/projects/Syn4D/Syn4d_renderer/unreal/render/Core/Python/tools/camera_sampling/generate_validated_orbit_camera_animations_ablation.py"
+export BEDLAM_CAMERA_SAMPLING_SCRIPT="$BEDLAM_CAMERA_ABLATION_SCRIPT"
 export BEDLAM_CAMERA_SAMPLING_CSV_PATH="$INPUT_CSV"
 export BEDLAM_CAMERA_SAMPLING_OUTPUT_CSV="$DATASET_DIR/be_seq_base_multicam.csv"
 export BEDLAM_CAMERA_SAMPLING_OUTPUT_JSON="$DATASET_DIR/be_camera_animations.json"

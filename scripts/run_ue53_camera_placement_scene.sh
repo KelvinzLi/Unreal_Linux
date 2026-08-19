@@ -8,9 +8,14 @@ if [[ "$#" -ne 1 ]]; then
 fi
 
 SCENE="$1"
-PROJECT_ROOT="/scratch/shared/beegfs/kelvin/apps/UnrealProjects"
-DATASET_ROOT="/scratch/shared/beegfs/kelvin/Syn4D/subsets/ablations/camera_placement/mixed_no_sim_no_motion"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$SCRIPT_DIR/lib/load_config.sh"
+load_bedlam_config
+PROJECT_ROOT="${BEDLAM_PROJECT_ROOT:-}"
+DATASET_ROOT="${BEDLAM_DATASET_ROOT:-}"
+require_bedlam_setting PROJECT_ROOT
+require_bedlam_setting DATASET_ROOT
 
 case "$SCENE" in
     antiquity)
@@ -69,6 +74,7 @@ test -f "$INPUT_CSV"
 
 echo "Running single-session base-CSV-to-MRQ workflow for $SCENE"
 "$SCRIPT_DIR/run_ue53_camera_placement_to_mrq_workflow.sh" \
+    --engine "$UE_ROOT" \
     --project "$PROJECT" \
     --map "$MAP" \
     --map-file "$MAP_FILE" \

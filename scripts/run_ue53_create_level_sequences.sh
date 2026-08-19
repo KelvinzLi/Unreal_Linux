@@ -2,16 +2,25 @@
 
 set -euo pipefail
 
-UE_ROOT="${UE_ROOT:-/scratch/shared/beegfs/kelvin/apps/Linux_Unreal_Engine_5.3.2}"
-PROJECT="${PROJECT:-/work/kelvin/unreal_linux/simulation_tests/projects/VictorianStreet/VictorianStreet.uproject}"
-MAP="${MAP:-/Game/VictorianStreet/Maps/Showcase}"
-MAP_FILE="${MAP_FILE:-/work/kelvin/unreal_linux/simulation_tests/projects/VictorianStreet/Content/VictorianStreet/Maps/Showcase.umap}"
-WRAPPER_SCRIPT="${WRAPPER_SCRIPT:-/athenahomes/kelvin/projects/Syn4D/unreal_linux/python/run_create_level_sequences_csv.py}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/lib/generated_asset_store.sh"
+source "$SCRIPT_DIR/lib/load_config.sh"
+load_bedlam_config
+
+UE_ROOT="${UE_ROOT:-}"
+PROJECT="${PROJECT:-}"
+MAP="${MAP:-}"
+MAP_FILE="${MAP_FILE:-}"
+WRAPPER_SCRIPT="${WRAPPER_SCRIPT:-$REPO_ROOT/python/run_create_level_sequences_csv.py}"
+require_bedlam_setting UE_ROOT
+require_bedlam_setting PROJECT
+require_bedlam_setting MAP
+require_bedlam_setting MAP_FILE
+require_bedlam_setting BEDLAM_LEVEL_SEQUENCE_CSV_PATH
 
 export BEDLAM_LEVEL_SEQUENCE_SCRIPT="${BEDLAM_LEVEL_SEQUENCE_SCRIPT:-$UE_ROOT/Engine/Content/PS/Bedlam/Core/Python/create_level_sequences_csv.py}"
-export BEDLAM_LEVEL_SEQUENCE_CSV_PATH="${BEDLAM_LEVEL_SEQUENCE_CSV_PATH:-/work/kelvin/unreal_linux/simulation_tests/outputs/street/be_seq_sim.csv}"
+export BEDLAM_LEVEL_SEQUENCE_CSV_PATH
 export BEDLAM_LEVEL_SEQUENCE_STATUS_DIR="${BEDLAM_LEVEL_SEQUENCE_STATUS_DIR:-$(dirname "$BEDLAM_LEVEL_SEQUENCE_CSV_PATH")}"
 export BEDLAM_LEVEL_SEQUENCE_CAMERA_TYPE="${BEDLAM_LEVEL_SEQUENCE_CAMERA_TYPE:-Default}"
 export BEDLAM_LEVEL_SEQUENCE_EXPECTED_MAP="${BEDLAM_LEVEL_SEQUENCE_EXPECTED_MAP:-$MAP}"

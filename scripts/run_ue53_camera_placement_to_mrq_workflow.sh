@@ -5,6 +5,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/lib/generated_asset_store.sh"
+source "$SCRIPT_DIR/lib/load_config.sh"
+load_bedlam_config
 
 usage() {
     cat >&2 <<'EOF'
@@ -25,7 +27,7 @@ Usage: run_ue53_camera_placement_to_mrq_workflow.sh \
 EOF
 }
 
-UE_ROOT="/scratch/shared/beegfs/kelvin/apps/Linux_Unreal_Engine_5.3.2"
+UE_ROOT="${UE_ROOT:-}"
 PROJECT=""
 MAP=""
 MAP_FILE=""
@@ -64,6 +66,7 @@ if [[ -z "$PROJECT" || -z "$MAP" || -z "$MAP_FILE" || -z "$BASE_CSV" ]]; then
     usage
     exit 2
 fi
+require_bedlam_setting UE_ROOT
 if [[ ! "$CAMERA_COUNT" =~ ^[1-9][0-9]*$ ]]; then
     echo "ERROR: --camera-count must be a positive integer" >&2
     exit 2
@@ -153,7 +156,10 @@ export BEDLAM_LEVEL_SEQUENCE_STATUS_PATH="$BEDLAM_WORKFLOW_INITIAL_LEVEL_STATUS"
 # TODO: Port the generic sampler's newer Linux stability options
 # (reuse_sequence_for_camera_pair and sequence_warmup_ticks) into the ablation
 # sampler before relying on paired-camera sequence reuse in ablation workflows.
-export BEDLAM_CAMERA_SAMPLING_SCRIPT="$REPO_ROOT/../Syn4d_renderer/unreal/render/Core/Python/tools/camera_sampling/generate_validated_orbit_camera_animations_ablation.py"
+require_bedlam_setting SYN4D_RENDERER_ROOT
+BEDLAM_CAMERA_ABLATION_SCRIPT="${BEDLAM_CAMERA_ABLATION_SCRIPT:-$SYN4D_RENDERER_ROOT/unreal/render/Core/Python/tools/camera_sampling/generate_validated_orbit_camera_animations_ablation.py}"
+test -f "$BEDLAM_CAMERA_ABLATION_SCRIPT"
+export BEDLAM_CAMERA_SAMPLING_SCRIPT="$BEDLAM_CAMERA_ABLATION_SCRIPT"
 export BEDLAM_CAMERA_SAMPLING_CSV_PATH="$BASE_CSV"
 export BEDLAM_CAMERA_SAMPLING_OUTPUT_CSV="$EXPANDED_CSV"
 export BEDLAM_CAMERA_SAMPLING_OUTPUT_JSON="$DATASET_DIR/be_camera_animations.json"

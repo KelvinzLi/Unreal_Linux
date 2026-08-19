@@ -8,9 +8,15 @@ if [[ "$#" -ne 1 ]]; then
 fi
 
 SCENE="$1"
-PROJECT_ROOT="/scratch/shared/beegfs/kelvin/apps/UnrealProjects"
-DATASET_ROOT="/scratch/shared/beegfs/kelvin/Syn4D/subsets/ablations/camera_placement/mixed_no_sim_no_motion"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$SCRIPT_DIR/lib/load_config.sh"
+load_bedlam_config
+PROJECT_ROOT="${BEDLAM_PROJECT_ROOT:-}"
+DATASET_ROOT="${BEDLAM_DATASET_ROOT:-}"
+require_bedlam_setting PROJECT_ROOT
+require_bedlam_setting DATASET_ROOT
+require_bedlam_setting UE_ROOT
 
 case "$SCENE" in
     antiquity) PROJECT_NAME="Antiquity3D"; UPROJECT="Antiquity3D"; MAP="/Game/Antiquity3D/Maps/Antiquity3D_City_Day_Dynamic"; MAP_REL="Antiquity3D/Maps/Antiquity3D_City_Day_Dynamic.umap" ;;

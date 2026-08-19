@@ -5,6 +5,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/lib/generated_asset_store.sh"
+source "$SCRIPT_DIR/lib/load_config.sh"
+load_bedlam_config
 
 usage() {
     cat >&2 <<EOF
@@ -23,7 +25,7 @@ Usage: $0 \\
 EOF
 }
 
-UE_ROOT=""
+UE_ROOT="${UE_ROOT:-}"
 PROJECT=""
 MAP=""
 MAP_FILE=""

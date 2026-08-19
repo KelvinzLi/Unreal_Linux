@@ -2,14 +2,24 @@
 
 set -euo pipefail
 
-UE_ROOT="${UE_ROOT:-/scratch/shared/beegfs/kelvin/apps/Linux_Unreal_Engine_5.3.2}"
-PROJECT="${PROJECT:-/work/kelvin/unreal_linux/simulation_tests/projects/VictorianStreet/VictorianStreet.uproject}"
-MAP="${MAP:-/Game/VictorianStreet/Maps/Showcase}"
-WRAPPER_SCRIPT="${WRAPPER_SCRIPT:-/athenahomes/kelvin/projects/Syn4D/unreal_linux/python/run_throw_simulation_batch.py}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$SCRIPT_DIR/lib/load_config.sh"
+load_bedlam_config
 
-export BEDLAM_SIM_BATCH_SCRIPT="${BEDLAM_SIM_BATCH_SCRIPT:-/athenahomes/kelvin/projects/Syn4D/Syn4d_renderer/unreal/render/Core/Python/tools/sim_throw_csv_objects_batch.py}"
-export BEDLAM_SIM_CSV_PATH="${BEDLAM_SIM_CSV_PATH:-/work/kelvin/unreal_linux/simulation_tests/inputs/street/be_seq_base.csv}"
-export BEDLAM_SIM_OUTPUT_DIR="${BEDLAM_SIM_OUTPUT_DIR:-/work/kelvin/unreal_linux/simulation_tests/outputs/street}"
+UE_ROOT="${UE_ROOT:-}"
+PROJECT="${PROJECT:-}"
+MAP="${MAP:-}"
+WRAPPER_SCRIPT="${WRAPPER_SCRIPT:-$REPO_ROOT/python/run_throw_simulation_batch.py}"
+require_bedlam_setting UE_ROOT
+require_bedlam_setting PROJECT
+require_bedlam_setting MAP
+require_bedlam_setting SYN4D_RENDERER_ROOT
+require_bedlam_setting BEDLAM_SIM_CSV_PATH
+
+export BEDLAM_SIM_BATCH_SCRIPT="${BEDLAM_SIM_BATCH_SCRIPT:-$SYN4D_RENDERER_ROOT/unreal/render/Core/Python/tools/sim_throw_csv_objects_batch.py}"
+export BEDLAM_SIM_CSV_PATH
+export BEDLAM_SIM_OUTPUT_DIR="${BEDLAM_SIM_OUTPUT_DIR:-$(dirname "$BEDLAM_SIM_CSV_PATH")/simulation_output}"
 export BEDLAM_SIM_NUM_THROW_OBJECTS="${BEDLAM_SIM_NUM_THROW_OBJECTS:-20}"
 export BEDLAM_SIM_SCALE_MULTIPLIER="${BEDLAM_SIM_SCALE_MULTIPLIER:-0.5}"
 export BEDLAM_SIM_PHYSICS_SUBSTEPPING="${BEDLAM_SIM_PHYSICS_SUBSTEPPING:-1}"

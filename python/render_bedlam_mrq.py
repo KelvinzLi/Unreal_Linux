@@ -33,21 +33,26 @@ import traceback
 import unreal
 
 
-QUEUE_ASSET = "/Game/Bedlam/MovieRenderQueue/MRQ_Batch_00"
+QUEUE_ASSET = os.environ.get(
+    "BEDLAM_RUNTIME_QUEUE_ASSET", "/Game/Bedlam/MovieRenderQueue/MRQ_Batch_00"
+)
 CAMERA_LABEL = "BE_CineCameraActor_Blueprint"
 TARGET_LABEL = "BE_CameraTarget"
 ROOT_LABEL = "BE_CameraRoot"
 OPERATOR_LABEL = "BE_CameraOperator"
 
-PROBE_DIR = os.environ.get(
-    "BEDLAM_RUNTIME_PROBE_DIR",
-    "/work/kelvin/unreal_logs/bedlam_camera_runtime",
-)
-RENDER_DIR = os.environ.get(
-    "BEDLAM_RUNTIME_RENDER_DIR",
-    "/work/kelvin/bedlam2/images/kaggle_eval/sim/"
-    "outpost_ue53_runtime_probe",
-)
+def required_environment_path(name):
+    value = os.environ.get(name, "").strip()
+    if not value:
+        raise RuntimeError(
+            f"{name} is required; use scripts/run_ue53_bedlam_render.sh "
+            "or export an absolute path before launching Unreal"
+        )
+    return value
+
+
+PROBE_DIR = required_environment_path("BEDLAM_RUNTIME_PROBE_DIR")
+RENDER_DIR = required_environment_path("BEDLAM_RUNTIME_RENDER_DIR")
 START_DELAY_SECONDS = float(
     os.environ.get("BEDLAM_RUNTIME_START_DELAY", "15")
 )
