@@ -18,6 +18,7 @@ Usage: $0 \\
   [--asset-store /absolute/generated/assets] \\
   [--preset 1-1-1_EXR_PNG_DepthMask] \\
   [--resolution 1280x720] \\
+  [--legacy-motion-blur true|false] \\
   [--mrq-only]
 EOF
 }
@@ -31,6 +32,7 @@ OUTPUT_DIR=""
 ASSET_STORE=""
 MRQ_PRESET="1-1-1_EXR_PNG_DepthMask"
 MRQ_RESOLUTION="1280x720"
+LEGACY_MOTION_BLUR="false"
 MRQ_ONLY=0
 
 while [[ "$#" -gt 0 ]]; do
@@ -44,6 +46,7 @@ while [[ "$#" -gt 0 ]]; do
         --asset-store) ASSET_STORE="${2:?Missing value for --asset-store}"; shift 2 ;;
         --preset) MRQ_PRESET="${2:?Missing value for --preset}"; shift 2 ;;
         --resolution) MRQ_RESOLUTION="${2:?Missing value for --resolution}"; shift 2 ;;
+        --legacy-motion-blur) LEGACY_MOTION_BLUR="${2:?Missing value for --legacy-motion-blur}"; shift 2 ;;
         --mrq-only) MRQ_ONLY=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "ERROR: Unknown argument: $1" >&2; usage; exit 2 ;;
@@ -53,6 +56,10 @@ done
 if [[ -z "$UE_ROOT" || -z "$PROJECT" || -z "$MAP" || -z "$MAP_FILE" || -z "$CSV" || -z "$OUTPUT_DIR" ]]; then
     echo "ERROR: --engine, --project, --map, --map-file, --csv, and --output are required" >&2
     usage
+    exit 2
+fi
+if [[ "$LEGACY_MOTION_BLUR" != "true" && "$LEGACY_MOTION_BLUR" != "false" ]]; then
+    echo "ERROR: --legacy-motion-blur must be true or false" >&2
     exit 2
 fi
 
@@ -77,6 +84,7 @@ export BEDLAM_MRQ_GENERATOR_SCRIPT="$UE_ROOT/Engine/Content/PS/Bedlam/Core/Pytho
 export BEDLAM_MRQ_OUTPUT_DIR="$OUTPUT_DIR"
 export BEDLAM_MRQ_PRESET="$MRQ_PRESET"
 export BEDLAM_MRQ_RESOLUTION="$MRQ_RESOLUTION"
+export BEDLAM_MRQ_LEGACY_MOTION_BLUR="$LEGACY_MOTION_BLUR"
 export BEDLAM_MRQ_EXPECTED_MAP="$MAP"
 export BEDLAM_MRQ_START_DELAY="1"
 export BEDLAM_MRQ_START_TIMEOUT="180"
@@ -138,6 +146,7 @@ echo "CSV:        $CSV"
 echo "Assets:     $ASSET_STORE"
 echo "Render out: $OUTPUT_DIR"
 echo "MRQ preset: $BEDLAM_MRQ_PRESET ($BEDLAM_MRQ_RESOLUTION)"
+echo "Legacy motion blur: $BEDLAM_MRQ_LEGACY_MOTION_BLUR"
 echo "Expected:   $EXPECTED_SEQUENCES sequences, $EXPECTED_JOBS MRQ jobs"
 echo "Mode:       $([[ "$MRQ_ONLY" -eq 1 ]] && echo MRQ-only || echo LevelSequence+MRQ)"
 

@@ -12,7 +12,10 @@ ensure_generated_asset_link() {
     resolved_store="$(readlink -f "$store_path")"
 
     if [[ -L "$project_path" ]]; then
-        current_target="$(readlink -f "$project_path")"
+        # readlink -f fails for a dangling link. This commonly occurs when an
+        # archived generated-asset root is renamed; treat it as a stale target
+        # and repoint it instead of aborting a set -e caller.
+        current_target="$(readlink -f "$project_path" 2>/dev/null || true)"
         if [[ "$current_target" != "$resolved_store" ]]; then
             ln -sfn "$resolved_store" "$project_path"
         fi
