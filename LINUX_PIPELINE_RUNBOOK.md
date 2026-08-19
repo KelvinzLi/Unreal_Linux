@@ -7,6 +7,38 @@ layout and metadata, the Linux EXR fix, and the Syn4D post-processing changes.
 
 ## 1. Working paths
 
+### Installing Unreal Engine 5.3.2 for Linux
+
+Download the official precompiled Linux archive from:
+
+```text
+https://www.unrealengine.com/linux
+```
+
+The exact archive used and tested for this pipeline is:
+
+```text
+Linux_Unreal_Engine_5.3.2.zip
+```
+
+Extract it into a stable installation directory and treat that directory as
+`UE_ROOT`. The current Oxford installation path shown below is only an example;
+the helper scripts accept a different absolute path through `--engine` or
+`UE_ROOT`, depending on the launcher.
+
+After extraction, verify the editor executable before installing BEDLAM
+content or plugins:
+
+```bash
+test -x "$UE_ROOT/Engine/Binaries/Linux/UnrealEditor"
+"$UE_ROOT/Engine/Binaries/Linux/UnrealEditor" -Version
+```
+
+The archive is already a precompiled Unreal installation. Building Unreal
+Engine from source is not required for the working UE 5.3.2 pipeline. The
+BEDLAM content and plugins described below must be installed after extracting
+the stock archive.
+
 ```text
 UE 5.3.2:
 /scratch/shared/beegfs/kelvin/apps/Linux_Unreal_Engine_5.3.2
@@ -96,8 +128,18 @@ The plugin declares `GameplayCameras` and its Build.cs includes that module as
 a dependency. Each project that needs it must still enable `BEDLAM` in its
 `.uproject`; it no longer needs its own copied `Plugins/BEDLAM` directory.
 
-The engine installation was copied from the known-working Linux build archived
-with the earlier UE 5.3.2 project:
+The authoritative original, pre-Linux-build plugin archive is:
+
+```text
+/work/kelvin/unreal_plugin_backups/BEDLAM_UE53_Windows
+```
+
+It contains the plugin descriptor, C++ source, resources, camera-shake content,
+and Windows binaries. The C++ source in that archive is identical to the source
+in the working Linux package.
+
+The known-working UE 5.3.2 Linux package, including its compiled Linux
+binaries, was archived with the earlier project at:
 
 ```text
 /scratch/shared/beegfs/kelvin/apps/cache/UnrealProjects/UE_5.3.2/SciFiModularOutpost/Plugins/BEDLAM
@@ -108,11 +150,17 @@ a real engine-plugin directory, not a symbolic link. Keeping one engine copy
 avoids project-by-project duplication and ensures that all projects load the
 same binary.
 
-The original Windows plugin backup is:
+For reproducible installation on another matching UE 5.3.2 Linux engine,
+distribute the complete known-working Linux `BEDLAM` directory rather than
+only the Windows archive. Copy it to:
 
 ```text
-/work/kelvin/unreal_plugin_backups/BEDLAM_UE53_Windows
+<UE_ROOT>/Engine/Plugins/BEDLAM
 ```
+
+The distributed directory should include `Source`, `Content`, `Resources`,
+`BEDLAM.uplugin`, and `Binaries/Linux`. The original Windows archive is useful
+for provenance but is not required when the tested Linux package is supplied.
 
 This plugin restores deterministic BEDLAM camera shake. It did not fix either
 the basic look-at target or the random camera direction changes by itself.
@@ -120,10 +168,18 @@ the basic look-at target or the random camera direction changes by itself.
 ### Bridge plugin
 
 Bridge is Quixel's editor-side asset browsing/import integration. The official
-Linux UE 5.3 package is installed engine-wide:
+Linux UE 5.3 package must be downloaded separately from the Unreal Linux
+downloads and installed engine-wide. The exact archive used and tested is:
 
 ```text
-/scratch/shared/beegfs/kelvin/apps/Linux_Unreal_Engine_5.3.2/Engine/Plugins/Bridge
+Linux_Bridge_5.3.0_2023.0.8.zip
+```
+
+Do not substitute the Windows Bridge plugin or the older Linux 2023.0.3 or
+2023.0.6 packages when reproducing this installation. Install the archive at:
+
+```text
+<UE_ROOT>/Engine/Plugins/Bridge
 ```
 
 Installed package and compatibility details:
@@ -133,6 +189,29 @@ Archive:       /work/kelvin/unreal_plugins/Linux_Bridge_5.3.0_2023.0.8.zip
 Bridge:        2023.0.8
 EngineVersion: 5.3.0
 BuildId:       27405482
+```
+
+The package contains an engine-relative `Engine/Plugins/Bridge` tree. From the
+directory containing the downloaded ZIP, install it with:
+
+```bash
+unzip -q Linux_Bridge_5.3.0_2023.0.8.zip \
+  'Engine/Plugins/Bridge/*' \
+  -d "$UE_ROOT"
+```
+
+Then verify the installation:
+
+```bash
+test -f "$UE_ROOT/Engine/Plugins/Bridge/Bridge.uplugin"
+jq -r .BuildId \
+  "$UE_ROOT/Engine/Plugins/Bridge/Binaries/Linux/UnrealEditor.modules"
+```
+
+The expected BuildId is `27405482`. A smoke-test editor log should contain:
+
+```text
+LogPluginManager: Mounting Engine plugin Bridge
 ```
 
 The plugin BuildId exactly matches the UE 5.3.2 engine BuildId. It contains

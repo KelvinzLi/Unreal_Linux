@@ -6,6 +6,12 @@ See [LINUX_PIPELINE_RUNBOOK.md](LINUX_PIPELINE_RUNBOOK.md) for the complete
 reproducible setup, plugin builds, rendering command, EXR fix, post-processing
 changes, rollback paths, and validation checklist.
 
+The tested base installation uses the official precompiled
+`Linux_Unreal_Engine_5.3.2.zip` from
+[Unreal Engine for Linux](https://www.unrealengine.com/linux). Bridge is a
+separate download; use exactly `Linux_Bridge_5.3.0_2023.0.8.zip`. Installation
+and verification details are recorded in the runbook.
+
 The confirmed camera stabilization settings are:
 
 ```text
