@@ -39,15 +39,49 @@ Engine from source is not required for the working UE 5.3.2 pipeline. The
 BEDLAM content and plugins described below must be installed after extracting
 the stock archive.
 
+### Configuring machine-specific paths
+
+Copy the committed example and edit the copy:
+
+```bash
+cd /path/to/unreal_linux
+cp config/environment.example.sh config/local.sh
+```
+
+`config/local.sh` is deliberately ignored by Git. General launchers source it
+automatically through `scripts/lib/load_config.sh`. This keeps engine, project,
+dataset, renderer, output, and log roots out of the scripts themselves. Set
+`BEDLAM_CONFIG=/absolute/path/to/config.sh` to select a configuration stored
+elsewhere.
+
+Command-line arguments override configured defaults. Environment variables can
+also override the example configuration because it uses conditional `:=`
+assignments. The Oxford paths below document the tested installation; they are
+not required locations for another user.
+
+The examples use the variable names from `config/environment.example.sh`.
+After loading the local configuration, define the repository root for commands
+that invoke a checked-out helper directly:
+
+```bash
+source config/local.sh
+UNREAL_LINUX_ROOT="$(pwd)"
+export UNREAL_LINUX_ROOT
+```
+
+Variables such as `PLUGIN_BACKUP_ROOT` and `SIMULATION_TEST_ROOT` are only used
+by the corresponding optional or historical sections. They are not required
+for the core CSV-to-MRQ render workflow.
+
 ```text
 UE 5.3.2:
-/scratch/shared/beegfs/kelvin/apps/Linux_Unreal_Engine_5.3.2
+$UE_ROOT
 
 Project:
-/scratch/shared/beegfs/kelvin/apps/UnrealProjects/UE_5.3.2/SciFiModularOutpost
+$BEDLAM_PROJECT_ROOT/SciFiModularOutpost
 
 Project descriptor:
-/scratch/shared/beegfs/kelvin/apps/UnrealProjects/UE_5.3.2/SciFiModularOutpost/SciFiModularOutpost.uproject
+$BEDLAM_PROJECT_ROOT/SciFiModularOutpost/SciFiModularOutpost.uproject
 
 Map:
 /Game/SciFiModularOutpost/Maps/ShowCase
@@ -56,16 +90,16 @@ MRQ queue:
 /Game/Bedlam/MovieRenderQueue/MRQ_Batch_00.MRQ_Batch_00
 
 Linux helper repository:
-/athenahomes/kelvin/projects/Syn4D/unreal_linux
+$UNREAL_LINUX_ROOT
 
 Post-processing repository:
-/athenahomes/kelvin/projects/Syn4D/Syn4d_renderer
+$SYN4D_RENDERER_ROOT
 
 Repaired BEDLAM Python environment:
-/users/kelvin/miniconda3/envs/bedlam2-repaired
+$BEDLAM_PYTHON_ENV
 
 Isolated OpenImageIO command-line environment:
-/users/kelvin/miniconda3/envs/bedlam-oiio-tools
+$OIIO_ENV
 ```
 
 Do not open the fresh UE 5.3.2 project with UE 5.4. Assets saved by UE 5.4 may
@@ -73,6 +107,19 @@ not reopen correctly in UE 5.3.
 
 Rendering must run inside a Slurm GPU allocation. A login node cannot
 initialize Vulkan.
+
+When capacity permits, place the Unreal Engine installation and Unreal project
+directories on `/work`, and place generated render output on `/scratch`:
+
+```text
+/work/<user>/apps/Linux_Unreal_Engine_5.3.2
+/work/<user>/apps/UnrealProjects/<project>
+/scratch/<user>/datasets/<render_output>
+```
+
+Unreal repeatedly reads the engine and project trees, whereas rendered datasets
+are large and reproducible. Treat these as recommended filesystem roles rather
+than literal paths, and record the selected locations in `config/local.sh`.
 
 ## 2. Components that were required
 
@@ -87,11 +134,22 @@ The camera look-at and Linux tick-order fix are separate from all three.
 
 ## 3. BEDLAM Core camera assets
 
+Upload Unreal content from the working machine to the identical
+engine-relative location in the Linux installation. For example, content from
+`UE_5.3/Engine/Content/PS/Bedlam/Core` must be placed at
+`$UE_ROOT/Engine/Content/PS/Bedlam/Core`. Preserve every path component and its
+capitalization so `/Engine/...` package references continue to resolve. Apply
+the same rule to the BEDLAM asset libraries and `Engine/Content/PS/obj`.
+
+This rule covers Unreal content, not compiled Windows plugin binaries. Plugins
+must occupy the corresponding engine-relative plugin path but use the tested
+Linux `Binaries/Linux` build described below.
+
 The project references assets through `/Engine/PS/Bedlam/Core/`. Therefore the
 assets must physically exist under the engine, not only under project content:
 
 ```text
-/scratch/shared/beegfs/kelvin/apps/Linux_Unreal_Engine_5.3.2/Engine/Content/PS/Bedlam/Core
+$UE_ROOT/Engine/Content/PS/Bedlam/Core
 ```
 
 Important files include:
@@ -105,8 +163,8 @@ Missing assets caused unresolved references and incomplete camera behavior.
 Confirm them with:
 
 ```bash
-test -f /scratch/shared/beegfs/kelvin/apps/Linux_Unreal_Engine_5.3.2/Engine/Content/PS/Bedlam/Core/BE_CineCameraActor_Blueprint.uasset
-test -f /scratch/shared/beegfs/kelvin/apps/Linux_Unreal_Engine_5.3.2/Engine/Content/PS/Bedlam/Core/BE_CameraOperator.uasset
+test -f $UE_ROOT/Engine/Content/PS/Bedlam/Core/BE_CineCameraActor_Blueprint.uasset
+test -f $UE_ROOT/Engine/Content/PS/Bedlam/Core/BE_CameraOperator.uasset
 ```
 
 ## 4. BEDLAM camera-shake plugin
@@ -115,13 +173,13 @@ The original Windows/UE 5.3 plugin was rebuilt for Linux. It is now installed
 once at engine level so every UE 5.3.2 project can use the same Linux build:
 
 ```text
-/scratch/shared/beegfs/kelvin/apps/Linux_Unreal_Engine_5.3.2/Engine/Plugins/BEDLAM
+$UE_ROOT/Engine/Plugins/BEDLAM
 ```
 
 The working binary is:
 
 ```text
-/scratch/shared/beegfs/kelvin/apps/Linux_Unreal_Engine_5.3.2/Engine/Plugins/BEDLAM/Binaries/Linux/libUnrealEditor-BEDLAM.so
+$UE_ROOT/Engine/Plugins/BEDLAM/Binaries/Linux/libUnrealEditor-BEDLAM.so
 ```
 
 The plugin declares `GameplayCameras` and its Build.cs includes that module as
@@ -131,7 +189,7 @@ a dependency. Each project that needs it must still enable `BEDLAM` in its
 The authoritative original, pre-Linux-build plugin archive is:
 
 ```text
-/work/kelvin/unreal_plugin_backups/BEDLAM_UE53_Windows
+$PLUGIN_BACKUP_ROOT/BEDLAM_UE53_Windows
 ```
 
 It contains the plugin descriptor, C++ source, resources, camera-shake content,
@@ -142,7 +200,7 @@ The known-working UE 5.3.2 Linux package, including its compiled Linux
 binaries, was archived with the earlier project at:
 
 ```text
-/scratch/shared/beegfs/kelvin/apps/cache/UnrealProjects/UE_5.3.2/SciFiModularOutpost/Plugins/BEDLAM
+$BEDLAM_PLUGIN_SOURCE
 ```
 
 The source and installed copies were checksum-verified after copying. This is
@@ -185,7 +243,7 @@ Do not substitute the Windows Bridge plugin or the older Linux 2023.0.3 or
 Installed package and compatibility details:
 
 ```text
-Archive:       /work/kelvin/unreal_plugins/Linux_Bridge_5.3.0_2023.0.8.zip
+Archive:       $PLUGIN_DOWNLOAD_ROOT/Linux_Bridge_5.3.0_2023.0.8.zip
 Bridge:        2023.0.8
 EngineVersion: 5.3.0
 BuildId:       27405482
@@ -253,20 +311,20 @@ modified engine module and replace only the matching engine binary.
 Current modified core binary:
 
 ```text
-/scratch/shared/beegfs/kelvin/apps/Linux_Unreal_Engine_5.3.2/Engine/Plugins/MovieScene/MovieRenderPipeline/Binaries/Linux/libUnrealEditor-MovieRenderPipelineCore.so
+$UE_ROOT/Engine/Plugins/MovieScene/MovieRenderPipeline/Binaries/Linux/libUnrealEditor-MovieRenderPipelineCore.so
 ```
 
 Stock rollback backup:
 
 ```text
-/work/kelvin/unreal_plugin_backups/MovieRenderPipeline_stock_UE53_Linux_before_BEDLAM_20260724
+$PLUGIN_BACKUP_ROOT/MovieRenderPipeline_stock_UE53_Linux_before_BEDLAM_20260724
 ```
 
 BEDLAM source backups:
 
 ```text
-/work/kelvin/unreal_plugin_backups/MovieRenderPipeline_BEDLAM_UE53_Windows
-/work/kelvin/unreal_plugin_backups/MovieRenderPipeline_BEDLAM_UE53_fresh
+$PLUGIN_BACKUP_ROOT/MovieRenderPipeline_BEDLAM_UE53_Windows
+$PLUGIN_BACKUP_ROOT/MovieRenderPipeline_BEDLAM_UE53_fresh
 ```
 
 The custom core records however many temporal samples the MRQ job requests:
@@ -315,7 +373,7 @@ Use a clean temporary host project:
 Build only the required module:
 
 ```bash
-UE53=/scratch/shared/beegfs/kelvin/apps/Linux_Unreal_Engine_5.3.2
+UE53=$UE_ROOT
 
 "$UE53/Engine/Build/BatchFiles/Linux/Build.sh" \
   UnrealEditor Linux Development \
@@ -378,7 +436,7 @@ transform-curve discontinuity.
 The launcher is:
 
 ```text
-/athenahomes/kelvin/projects/Syn4D/unreal_linux/scripts/run_ue53_bedlam_render.sh
+$UNREAL_LINUX_ROOT/scripts/run_ue53_bedlam_render.sh
 ```
 
 Despite its historical name, it now supports the production BEDLAM folder
@@ -389,13 +447,13 @@ Example:
 
 ```bash
 env \
-  BEDLAM_RUNTIME_RENDER_DIR=/work/kelvin/bedlam2/images/kaggle_eval/sim/outpost_ue53_bedlam_temporal1 \
-  BEDLAM_RUNTIME_PROBE_DIR=/work/kelvin/unreal_logs/outpost_ue53_bedlam_temporal1 \
+  BEDLAM_RUNTIME_RENDER_DIR=$BEDLAM_OUTPUT_ROOT/outpost_ue53_bedlam_temporal1 \
+  BEDLAM_RUNTIME_PROBE_DIR=$BEDLAM_LOG_ROOT/outpost_ue53_bedlam_temporal1 \
   BEDLAM_RUNTIME_EXEC_CMDS='tick.AllowAsyncTickDispatch 0,tick.AllowConcurrentTickQueue 0' \
   BEDLAM_RUNTIME_PRESERVE_BEDLAM_LAYOUT=1 \
   BEDLAM_RUNTIME_IMAGE_TEMPORAL_SAMPLES=0 \
   BEDLAM_RUNTIME_WRITE_DONE_MARKERS=1 \
-  bash /athenahomes/kelvin/projects/Syn4D/unreal_linux/scripts/run_ue53_bedlam_render.sh
+  bash $UNREAL_LINUX_ROOT/scripts/run_ue53_bedlam_render.sh
 ```
 
 `BEDLAM_RUNTIME_IMAGE_TEMPORAL_SAMPLES=0` means “do not override the saved MRQ
@@ -418,7 +476,7 @@ comparison render removed this behavior and matched the good UE 5.4 render.
 Confirmed comparison output:
 
 ```text
-/work/kelvin/bedlam2/images/kaggle_eval/sim/outpost_ue53_bedlam_temporal1
+$BEDLAM_OUTPUT_ROOT/outpost_ue53_bedlam_temporal1
 ```
 
 Expected output:
@@ -502,7 +560,7 @@ Engine/Plugins/MovieScene/MovieRenderPipeline/Binaries/Linux/libUnrealEditor-Mov
 Rollback backup:
 
 ```text
-/work/kelvin/unreal_plugin_backups/MovieRenderPipelineRenderPasses_UE53_before_EXR_channel_fix_20260725
+$PLUGIN_BACKUP_ROOT/MovieRenderPipelineRenderPasses_UE53_before_EXR_channel_fix_20260725
 ```
 
 Validate a new EXR:
@@ -537,12 +595,12 @@ $HOME/.virtualenvs/bedlam2
 The original cluster environment was:
 
 ```text
-/users/kelvin/miniconda3/envs/bedlam2
+$ORIGINAL_BEDLAM_ENV
 ```
 
 The hard-coded activation/deactivation and venv existence check were removed.
 The watcher now uses the `python3` supplied by the caller's active environment.
-Use `/users/kelvin/miniconda3/envs/bedlam2-repaired`, as described in
+Use `$BEDLAM_PYTHON_ENV`, as described in
 section 10.
 
 ### 9.2 Replace the wrong `parallel`
@@ -578,14 +636,14 @@ package stack, as documented in section 10. The CLI tools therefore belong in
 this isolated environment:
 
 ```text
-/users/kelvin/miniconda3/envs/bedlam-oiio-tools
+$OIIO_ENV
 ```
 
 It contains:
 
 ```text
-/users/kelvin/miniconda3/envs/bedlam-oiio-tools/bin/oiiotool
-/users/kelvin/miniconda3/envs/bedlam-oiio-tools/bin/exrheader
+$OIIO_ENV/bin/oiiotool
+$OIIO_ENV/bin/exrheader
 ```
 
 The layer script now:
@@ -598,14 +656,14 @@ Keep `bedlam2-repaired` activated and prepend the tool environment to `PATH`;
 do not activate the OIIO environment over the Python environment:
 
 ```bash
-export PATH="/users/kelvin/miniconda3/envs/bedlam-oiio-tools/bin:$PATH"
+export PATH="$OIIO_ENV/bin:$PATH"
 ```
 
 To recreate the isolated tool:
 
 ```bash
-/users/kelvin/miniconda3/bin/conda create \
-  -p /users/kelvin/miniconda3/envs/bedlam-oiio-tools \
+$CONDA_ROOT/bin/conda create \
+  -p $OIIO_ENV \
   -c conda-forge \
   openimageio-tools \
   -y
@@ -637,13 +695,24 @@ the Pillow writer is retained as a robust greyscale PNG writer.
 
 ## 10. Python environment contamination and safe repair
 
+For a new installation, use the guarded wrapper documented in the README:
+
+```bash
+scripts/setup_postprocessing_environments.sh
+```
+
+It implements the repair below when an original environment exists, or creates
+a clean Python 3.10 environment from `Syn4d_renderer/requirements.txt`. It also
+creates the isolated OpenImageIO command environment. The manual commands in
+this section are retained for diagnosis and recovery.
+
 ### 10.1 What broke the original environment
 
 Do not install OpenEXR or OpenImageIO into the main BEDLAM Python environment
 with Conda. This command was run on 25 July 2026 and caused the breakage:
 
 ```bash
-/users/kelvin/miniconda3/bin/conda install -c conda-forge openexr openimageio
+$CONDA_ROOT/bin/conda install -c conda-forge openexr openimageio
 ```
 
 The transaction installed NumPy 1.26.4, OpenEXR 3.1.11, and OpenImageIO
@@ -671,9 +740,9 @@ CLI tools separate from the Python environment.
 Preserve the original environment for rollback and clone it:
 
 ```bash
-/users/kelvin/miniconda3/bin/conda create \
-  --clone /users/kelvin/miniconda3/envs/bedlam2 \
-  -p /users/kelvin/miniconda3/envs/bedlam2-repaired \
+$CONDA_ROOT/bin/conda create \
+  --clone $ORIGINAL_BEDLAM_ENV \
+  -p $BEDLAM_PYTHON_ENV \
   -y
 ```
 
@@ -681,11 +750,11 @@ The clone is approximately 4.8 GB and can take several minutes. Save package
 inventories before changing it:
 
 ```bash
-/users/kelvin/miniconda3/bin/conda list \
-  -p /users/kelvin/miniconda3/envs/bedlam2-repaired \
+$CONDA_ROOT/bin/conda list \
+  -p $BEDLAM_PYTHON_ENV \
   > /tmp/bedlam2-repaired-conda-before.txt
 
-/users/kelvin/miniconda3/envs/bedlam2-repaired/bin/python -m pip freeze \
+$BEDLAM_PYTHON_ENV/bin/python -m pip freeze \
   > /tmp/bedlam2-repaired-pip-before.txt
 ```
 
@@ -693,8 +762,8 @@ A normal Conda removal dry-run proposed unrelated Boost, ICU, and libxml
 changes. Remove only the three conflicting Conda-owned packages:
 
 ```bash
-/users/kelvin/miniconda3/bin/conda remove \
-  -p /users/kelvin/miniconda3/envs/bedlam2-repaired \
+$CONDA_ROOT/bin/conda remove \
+  -p $BEDLAM_PYTHON_ENV \
   openimageio openexr numpy \
   --force-remove -y
 ```
@@ -702,7 +771,7 @@ changes. Remove only the three conflicting Conda-owned packages:
 Then restore the required pip packages and their files:
 
 ```bash
-/users/kelvin/miniconda3/envs/bedlam2-repaired/bin/python -m pip install \
+$BEDLAM_PYTHON_ENV/bin/python -m pip install \
   --force-reinstall \
   --no-cache-dir \
   "numpy==2.2.6" \
@@ -716,7 +785,7 @@ remains available but broken.
 ### 10.3 Validate the repaired environment
 
 ```bash
-conda activate /users/kelvin/miniconda3/envs/bedlam2-repaired
+conda activate $BEDLAM_PYTHON_ENV
 
 python - <<'PY'
 import numpy
@@ -753,18 +822,18 @@ block the tested pipeline.
 Activate the repaired Python environment and expose the isolated CLI tools:
 
 ```bash
-conda activate /users/kelvin/miniconda3/envs/bedlam2-repaired
-export PATH="/users/kelvin/miniconda3/envs/bedlam-oiio-tools/bin:$PATH"
+conda activate $BEDLAM_PYTHON_ENV
+export PATH="$OIIO_ENV/bin:$PATH"
 
 which python
 python -c 'import numpy; print(numpy.__version__)'
 command -v oiiotool
 command -v exrheader
 
-cd /athenahomes/kelvin/projects/Syn4D/Syn4d_renderer/tools/post_render_pipeline
+cd $SYN4D_RENDERER_ROOT/tools/post_render_pipeline
 
 bash be_post_render_pipeline_watch.sh \
-  /work/kelvin/bedlam2/images/kaggle_eval/sim/outpost_ue53_bedlam_temporal1 \
+  $BEDLAM_OUTPUT_ROOT/outpost_ue53_bedlam_temporal1 \
   landscape \
   extract_layers \
   extract_masks \
@@ -798,14 +867,14 @@ a global “everything done” message and normally keeps polling.
 Use the active repaired interpreter:
 
 ```bash
-conda activate /users/kelvin/miniconda3/envs/bedlam2-repaired
-cd /athenahomes/kelvin/projects/Syn4D/Syn4d_renderer
+conda activate $BEDLAM_PYTHON_ENV
+cd $SYN4D_RENDERER_ROOT
 
 python vis_pc_multiview_seg_obj_process_barycentric_final_clean_vgg_single.py \
-  --dataset_root /work/kelvin/bedlam2/images/kaggle_eval/sim \
+  --dataset_root $BEDLAM_OUTPUT_ROOT \
   --scene_name outpost_ue53_bedlam_temporal1 \
   --metadata_root /scratch/shared/beegfs/zeren/Syn4D/metadata \
-  --fallback_metadata_root /scratch/shared/beegfs/kelvin/Syn4D/metadata \
+  --fallback_metadata_root $METADATA_ROOT \
   --stride 1 \
   --rgb-source png \
   --tracking-output-format sparse_safetensor \
@@ -813,12 +882,12 @@ python vis_pc_multiview_seg_obj_process_barycentric_final_clean_vgg_single.py \
 ```
 
 An activated environment does not override an explicitly named interpreter.
-Do not invoke `/users/kelvin/miniconda3/envs/bedlam2/bin/python`: that selects
+Do not invoke `$ORIGINAL_BEDLAM_ENV/bin/python`: that selects
 the broken original even if the prompt says `(bedlam2-repaired)`.
 `which python` must report:
 
 ```text
-/users/kelvin/miniconda3/envs/bedlam2-repaired/bin/python
+$BEDLAM_PYTHON_ENV/bin/python
 ```
 
 ## 13. Interrupted watcher and stale locks
@@ -841,7 +910,7 @@ Then remove only the confirmed empty stale lock:
 
 ```bash
 rmdir \
-  /work/kelvin/bedlam2/images/kaggle_eval/sim/outpost_ue53_bedlam_temporal1/.post_render_locks/seq_000000_0.lock
+  $BEDLAM_OUTPUT_ROOT/outpost_ue53_bedlam_temporal1/.post_render_locks/seq_000000_0.lock
 ```
 
 Do not remove the manifest or `post_ready` marker merely because a lock is
@@ -852,7 +921,7 @@ stale.
 Before post-processing:
 
 ```bash
-ROOT=/work/kelvin/bedlam2/images/kaggle_eval/sim/outpost_ue53_bedlam_temporal1
+ROOT=$BEDLAM_OUTPUT_ROOT/outpost_ue53_bedlam_temporal1
 
 find "$ROOT/exr_image/seq_000000_0" -name '*.exr' | wc -l
 find "$ROOT/exr_image/seq_000000_0" -name '*.png' | wc -l
@@ -910,7 +979,7 @@ successful processing.
 The corrected temporal-count-1 render is:
 
 ```text
-/work/kelvin/bedlam2/images/kaggle_eval/sim/outpost_ue53_bedlam_temporal1
+$BEDLAM_OUTPUT_ROOT/outpost_ue53_bedlam_temporal1
 ```
 
 It completed both MRQ jobs with 202 PNGs, 202 image EXRs, 202 depth EXRs, and
@@ -922,7 +991,7 @@ EXRs remained available.
 The earlier end-to-end post-processing test was:
 
 ```text
-/work/kelvin/bedlam2/images/kaggle_eval/sim/outpost_ue53_bedlam_full
+$BEDLAM_OUTPUT_ROOT/outpost_ue53_bedlam_full
 ```
 
 That test produced 192 dataset frames, RGB/depth layers, 3,709 masks, two
@@ -936,10 +1005,10 @@ Reference frames:
 
 ```text
 Windows:
-/work/kelvin/bedlam2/images/kaggle_eval/sim/outpost_windows_reference/png/seq_000000_0
+$BEDLAM_OUTPUT_ROOT/outpost_windows_reference/png/seq_000000_0
 
 Linux UE 5.3 corrected render:
-/work/kelvin/bedlam2/images/kaggle_eval/sim/outpost_ue53_bedlam_temporal1/png/seq_000000_0
+$BEDLAM_OUTPUT_ROOT/outpost_ue53_bedlam_temporal1/png/seq_000000_0
 ```
 
 Both sets contain 192 RGBA PNGs at 1280x720. Frame matching and phase
@@ -1062,7 +1131,7 @@ The corresponding project directories are symlinks into the selected output
 asset store. For the default Street workflow, the physical layout is:
 
 ```text
-/work/kelvin/unreal_linux/simulation_tests/outputs/street/unreal_assets/
+$SIMULATION_TEST_ROOT/outputs/street/unreal_assets/
 ├── LevelSequences/
 ├── MovieRenderQueue/
 ├── linux_camera_sampling_status.json
@@ -1097,9 +1166,9 @@ exits zero after a Python error.
 Entry points:
 
 ```text
-/athenahomes/kelvin/projects/Syn4D/unreal_linux/scripts/run_ue53_create_level_sequences.sh
-/athenahomes/kelvin/projects/Syn4D/unreal_linux/scripts/run_ue53_camera_sampling.sh
-/athenahomes/kelvin/projects/Syn4D/unreal_linux/scripts/run_ue53_create_movie_render_queue.sh
+$UNREAL_LINUX_ROOT/scripts/run_ue53_create_level_sequences.sh
+$UNREAL_LINUX_ROOT/scripts/run_ue53_camera_sampling.sh
+$UNREAL_LINUX_ROOT/scripts/run_ue53_create_movie_render_queue.sh
 ```
 
 ## 19. Linux throw simulation
@@ -1108,15 +1177,15 @@ The Linux wrapper invokes the simulation implementation directly from
 `Syn4d_renderer` rather than maintaining a second copied implementation:
 
 ```text
-/athenahomes/kelvin/projects/Syn4D/Syn4d_renderer/unreal/render/Core/Python/tools/sim_throw_csv_objects_batch.py
-/athenahomes/kelvin/projects/Syn4D/Syn4d_renderer/unreal/render/Core/Python/tools/sim_throw_csv_objects.py
+$SYN4D_RENDERER_ROOT/unreal/render/Core/Python/tools/sim_throw_csv_objects_batch.py
+$SYN4D_RENDERER_ROOT/unreal/render/Core/Python/tools/sim_throw_csv_objects.py
 ```
 
 The Linux-specific entry points are:
 
 ```text
-/athenahomes/kelvin/projects/Syn4D/unreal_linux/scripts/run_ue53_throw_simulation.sh
-/athenahomes/kelvin/projects/Syn4D/unreal_linux/python/run_throw_simulation_batch.py
+$UNREAL_LINUX_ROOT/scripts/run_ue53_throw_simulation.sh
+$UNREAL_LINUX_ROOT/python/run_throw_simulation_batch.py
 ```
 
 The wrapper launches full `UnrealEditor` because the implementation requires
@@ -1124,10 +1193,10 @@ PIE simulation and Slate tick callbacks. It cannot run in ordinary CPython.
 The default Street paths are:
 
 ```text
-project: /work/kelvin/unreal_linux/simulation_tests/projects/VictorianStreet/VictorianStreet.uproject
+project: $SIMULATION_TEST_ROOT/projects/VictorianStreet/VictorianStreet.uproject
 map:     /Game/VictorianStreet/Maps/Showcase
-input:   /work/kelvin/unreal_linux/simulation_tests/inputs/street/be_seq_base.csv
-output:  /work/kelvin/unreal_linux/simulation_tests/outputs/street
+input:   $SIMULATION_TEST_ROOT/inputs/street/be_seq_base.csv
+output:  $SIMULATION_TEST_ROOT/outputs/street
 ```
 
 Run a one-sequence smoke test first:
@@ -1136,8 +1205,8 @@ Run a one-sequence smoke test first:
 BEDLAM_SIM_LIMIT=1 \
 BEDLAM_SIM_NUM_THROW_OBJECTS=3 \
 BEDLAM_SIM_MAX_RESIMULATION_ATTEMPTS=1 \
-bash /athenahomes/kelvin/projects/Syn4D/unreal_linux/scripts/run_ue53_throw_simulation.sh \
-  2>&1 | tee /work/kelvin/unreal_linux/simulation_tests/logs/street/smoke_test.log
+bash $UNREAL_LINUX_ROOT/scripts/run_ue53_throw_simulation.sh \
+  2>&1 | tee $SIMULATION_TEST_ROOT/logs/street/smoke_test.log
 ```
 
 For the requested full configuration, omit the smoke-test overrides. Launcher
