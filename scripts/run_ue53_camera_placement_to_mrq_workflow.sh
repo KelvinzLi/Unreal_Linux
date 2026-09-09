@@ -20,10 +20,11 @@ Usage: run_ue53_camera_placement_to_mrq_workflow.sh \
   [--asset-store /absolute/generated/assets] \
   [--expanded-csv /absolute/path/be_seq_base_multicam.csv] \
   [--final-csv /absolute/path/be_seq.csv] \
-  [--camera-preset camera_placement_9] \
-  [--camera-count 9] \
+  [--camera-preset camera_placement_9|random_pair|random_single|mixed_8] \
+  [--camera-count 9|2|1|8] \
   [--mrq-preset 1-1-1_EXR_PNG_DepthMask] \
-  [--resolution 1280x720]
+  [--resolution 1280x720] \
+  [--legacy-motion-blur true|false]
 EOF
 }
 
@@ -40,6 +41,7 @@ CAMERA_PRESET="camera_placement_9"
 CAMERA_COUNT=9
 MRQ_PRESET="1-1-1_EXR_PNG_DepthMask"
 RESOLUTION="1280x720"
+LEGACY_MOTION_BLUR="false"
 
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
@@ -56,6 +58,7 @@ while [[ "$#" -gt 0 ]]; do
         --camera-count) CAMERA_COUNT="${2:?Missing value for --camera-count}"; shift 2 ;;
         --mrq-preset) MRQ_PRESET="${2:?Missing value for --mrq-preset}"; shift 2 ;;
         --resolution) RESOLUTION="${2:?Missing value for --resolution}"; shift 2 ;;
+        --legacy-motion-blur) LEGACY_MOTION_BLUR="${2:?Missing value for --legacy-motion-blur}"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "ERROR: Unknown argument: $1" >&2; usage; exit 2 ;;
     esac
@@ -78,11 +81,21 @@ case "$CAMERA_PRESET" in
     random_pair)
         EXPECTED_CAMERA_COUNT=2
         ;;
+    random_single)
+        EXPECTED_CAMERA_COUNT=1
+        ;;
+    mixed_8)
+        EXPECTED_CAMERA_COUNT=8
+        ;;
     *)
         echo "ERROR: Unsupported camera preset: $CAMERA_PRESET" >&2
         exit 2
         ;;
 esac
+if [[ "$LEGACY_MOTION_BLUR" != "true" && "$LEGACY_MOTION_BLUR" != "false" ]]; then
+    echo "ERROR: --legacy-motion-blur must be true or false" >&2
+    exit 2
+fi
 if [[ "$CAMERA_COUNT" -ne "$EXPECTED_CAMERA_COUNT" ]]; then
     echo "ERROR: $CAMERA_PRESET generates $EXPECTED_CAMERA_COUNT cameras, not $CAMERA_COUNT" >&2
     exit 2
@@ -142,14 +155,14 @@ export BEDLAM_WORKFLOW_EXPECTED_MRQ_JOBS="$EXPECTED_JOBS"
 export BEDLAM_WORKFLOW_INITIAL_LEVEL_STATUS="$ASSET_STORE/linux_initial_level_sequence_status.json"
 export BEDLAM_WORKFLOW_FINAL_LEVEL_STATUS="$ASSET_STORE/linux_level_sequence_status.json"
 export BEDLAM_WORKFLOW_STATUS_PATH="$ASSET_STORE/linux_camera_to_mrq_workflow_status.json"
-export BEDLAM_WORKFLOW_START_TIMEOUT="180"
+export BEDLAM_WORKFLOW_START_TIMEOUT="${BEDLAM_WORKFLOW_START_TIMEOUT:-900}"
 
-export BEDLAM_LEVEL_SEQUENCE_SCRIPT="$UE_ROOT/Engine/Content/PS/Bedlam/Core/Python/create_level_sequences_csv.py"
+export BEDLAM_LEVEL_SEQUENCE_SCRIPT="${BEDLAM_LEVEL_SEQUENCE_SCRIPT:-$UE_ROOT/Engine/Content/PS/Bedlam/Core/Python/create_level_sequences_csv.py}"
 export BEDLAM_LEVEL_SEQUENCE_STATUS_DIR="$DATASET_DIR"
 export BEDLAM_LEVEL_SEQUENCE_CAMERA_TYPE="Default"
 export BEDLAM_LEVEL_SEQUENCE_EXPECTED_MAP="$MAP"
 export BEDLAM_LEVEL_SEQUENCE_START_DELAY="0"
-export BEDLAM_LEVEL_SEQUENCE_START_TIMEOUT="180"
+export BEDLAM_LEVEL_SEQUENCE_START_TIMEOUT="${BEDLAM_LEVEL_SEQUENCE_START_TIMEOUT:-$BEDLAM_WORKFLOW_START_TIMEOUT}"
 export BEDLAM_LEVEL_SEQUENCE_EXPORT_GEOMETRY_CACHE_OBJ="0"
 export BEDLAM_LEVEL_SEQUENCE_STATUS_PATH="$BEDLAM_WORKFLOW_INITIAL_LEVEL_STATUS"
 
@@ -157,16 +170,22 @@ export BEDLAM_LEVEL_SEQUENCE_STATUS_PATH="$BEDLAM_WORKFLOW_INITIAL_LEVEL_STATUS"
 # (reuse_sequence_for_camera_pair and sequence_warmup_ticks) into the ablation
 # sampler before relying on paired-camera sequence reuse in ablation workflows.
 require_bedlam_setting SYN4D_RENDERER_ROOT
-BEDLAM_CAMERA_ABLATION_SCRIPT="${BEDLAM_CAMERA_ABLATION_SCRIPT:-$SYN4D_RENDERER_ROOT/unreal/render/Core/Python/tools/camera_sampling/generate_validated_orbit_camera_animations_ablation.py}"
-test -f "$BEDLAM_CAMERA_ABLATION_SCRIPT"
-export BEDLAM_CAMERA_SAMPLING_SCRIPT="$BEDLAM_CAMERA_ABLATION_SCRIPT"
+if [[ "$CAMERA_PRESET" == "camera_placement_9" ]]; then
+    BEDLAM_CAMERA_SAMPLING_SCRIPT_DEFAULT="${BEDLAM_CAMERA_ABLATION_SCRIPT:-$SYN4D_RENDERER_ROOT/unreal/render/Core/Python/tools/camera_sampling/generate_validated_orbit_camera_animations_ablation.py}"
+elif [[ "$CAMERA_PRESET" == "mixed_8" ]]; then
+    BEDLAM_CAMERA_SAMPLING_SCRIPT_DEFAULT="$SYN4D_RENDERER_ROOT/unreal/render/Core/Python/tools/camera_sampling/generate_validated_mixed_camera_layouts.py"
+else
+    BEDLAM_CAMERA_SAMPLING_SCRIPT_DEFAULT="$SYN4D_RENDERER_ROOT/unreal/render/Core/Python/tools/camera_sampling/generate_validated_orbit_camera_animations.py"
+fi
+export BEDLAM_CAMERA_SAMPLING_SCRIPT="${BEDLAM_CAMERA_SAMPLING_SCRIPT:-$BEDLAM_CAMERA_SAMPLING_SCRIPT_DEFAULT}"
+test -f "$BEDLAM_CAMERA_SAMPLING_SCRIPT"
 export BEDLAM_CAMERA_SAMPLING_CSV_PATH="$BASE_CSV"
 export BEDLAM_CAMERA_SAMPLING_OUTPUT_CSV="$EXPANDED_CSV"
 export BEDLAM_CAMERA_SAMPLING_OUTPUT_JSON="$DATASET_DIR/be_camera_animations.json"
 export BEDLAM_CAMERA_SAMPLING_SEQUENCE_ROOT="/Game/Bedlam/LevelSequences"
 export BEDLAM_CAMERA_SAMPLING_EXPECTED_MAP="$MAP"
 export BEDLAM_CAMERA_SAMPLING_START_DELAY="0"
-export BEDLAM_CAMERA_SAMPLING_START_TIMEOUT="180"
+export BEDLAM_CAMERA_SAMPLING_START_TIMEOUT="${BEDLAM_CAMERA_SAMPLING_START_TIMEOUT:-$BEDLAM_WORKFLOW_START_TIMEOUT}"
 export BEDLAM_CAMERA_SAMPLING_TIMEOUT="43200"
 export BEDLAM_CAMERA_SAMPLING_PRESET="$CAMERA_PRESET"
 export BEDLAM_CAMERA_SAMPLING_SEED="${BEDLAM_CAMERA_SAMPLING_SEED:-}"
@@ -176,9 +195,10 @@ export BEDLAM_MRQ_GENERATOR_SCRIPT="$UE_ROOT/Engine/Content/PS/Bedlam/Core/Pytho
 export BEDLAM_MRQ_OUTPUT_DIR="$OUTPUT_DIR"
 export BEDLAM_MRQ_PRESET="$MRQ_PRESET"
 export BEDLAM_MRQ_RESOLUTION="$RESOLUTION"
+export BEDLAM_MRQ_LEGACY_MOTION_BLUR="$LEGACY_MOTION_BLUR"
 export BEDLAM_MRQ_EXPECTED_MAP="$MAP"
 export BEDLAM_MRQ_START_DELAY="0"
-export BEDLAM_MRQ_START_TIMEOUT="180"
+export BEDLAM_MRQ_START_TIMEOUT="${BEDLAM_MRQ_START_TIMEOUT:-$BEDLAM_WORKFLOW_START_TIMEOUT}"
 export BEDLAM_MRQ_LEVEL_SEQUENCE_STATUS="$BEDLAM_WORKFLOW_FINAL_LEVEL_STATUS"
 export BEDLAM_MRQ_STATUS_PATH="$ASSET_STORE/linux_mrq_generation_status.json"
 
@@ -189,10 +209,19 @@ rm -f -- \
     "$BEDLAM_MRQ_STATUS_PATH" \
     "$BEDLAM_WORKFLOW_STATUS_PATH"
 
-RUN_TAG="${SLURM_JOB_ID:-manual}_$(date +%Y%m%d_%H%M%S)"
+RUN_TAG="${SLURM_JOB_ID:-manual}_$$_$(date +%Y%m%d_%H%M%S)"
 ZEN_DIR="/tmp/${USER}/unreal_zen_5.3.2_camera_to_mrq_${RUN_TAG}"
-DDC_DIR="/tmp/${USER}/unreal_ddc_5.3.2"
-mkdir -p "$ZEN_DIR" "$DDC_DIR"
+DDC_DIR="${UE_LocalDataCachePath:-/tmp/${USER}/unreal_ddc_5.3.2}"
+export UE_LocalDataCachePath="$DDC_DIR"
+UE_USER_DIR="${BEDLAM_UE_USER_DIR:-/tmp/${USER}/unreal_user_5.3.2_camera_to_mrq_${RUN_TAG}}"
+export XDG_CONFIG_HOME="${BEDLAM_XDG_CONFIG_HOME:-$UE_USER_DIR/.config}"
+mkdir -p "$ZEN_DIR" "$DDC_DIR" "$UE_USER_DIR" "$XDG_CONFIG_HOME"
+
+SHARED_DDC_ARGS=()
+if [[ -n "${BEDLAM_SHARED_DDC_PATH:-}" ]]; then
+    mkdir -p "$BEDLAM_SHARED_DDC_PATH"
+    SHARED_DDC_ARGS+=("-SharedDataCachePath=$BEDLAM_SHARED_DDC_PATH")
+fi
 
 echo "Project:          $PROJECT"
 echo "Map:              $MAP"
@@ -202,6 +231,10 @@ echo "Final CSV:        $FINAL_CSV"
 echo "Generated assets: $ASSET_STORE"
 echo "Render output:    $OUTPUT_DIR"
 echo "MRQ:              $MRQ_PRESET $RESOLUTION ($EXPECTED_JOBS jobs)"
+echo "Motion blur:      $LEGACY_MOTION_BLUR"
+echo "Unreal user dir:  $UE_USER_DIR"
+echo "XDG config:       $XDG_CONFIG_HOME"
+echo "Shared DDC:       ${BEDLAM_SHARED_DDC_PATH:-disabled}"
 echo "WARNING: Existing generated Level Sequence and MRQ assets in this dedicated asset store"
 echo "         will be removed after Unreal validates the requested map."
 
@@ -218,6 +251,8 @@ echo "         will be removed after Unreal validates the requested map."
     -ResY=360 \
     "-ZenDataPath=$ZEN_DIR" \
     "-LocalDataCachePath=$DDC_DIR" \
+    "${SHARED_DDC_ARGS[@]}" \
+    "-UserDir=$UE_USER_DIR" \
     -stdout \
     -FullStdOutLogOutput
 

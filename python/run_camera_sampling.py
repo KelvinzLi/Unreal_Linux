@@ -127,26 +127,38 @@ def tick(_delta_seconds):
                     "distance_range_cm": (400.0, 600.0),
                     "tick_delay_seconds": 2.0,
                 }
-            elif PRESET == "random_pair":
+            elif PRESET in ("random_single", "random_pair"):
+                paired = PRESET == "random_pair"
                 sampler_args = {
-                    "num_cameras": 2,
+                    "num_cameras": 2 if paired else 1,
                     "max_camera_attempts": 1000,
                     "validation_samples": "all",
                     "camera_collision_radius_cm": 20.0,
-                    "paired_initial_cameras": True,
-                    "reuse_sequence_for_camera_pair": True,
+                    "paired_initial_cameras": paired,
+                    "reuse_sequence_for_camera_pair": paired,
                     "sequence_warmup_ticks": 1,
                     "camera_motion_mode": "random",
                     "camera_motion_family_weights": {"orbit": 60, "dolly": 30, "static": 10},
                     "camera_motion_attempt_block_size": 50,
                     "tick_delay_seconds": 2.0,
                 }
+            elif PRESET == "mixed_8":
+                sampler_args = {
+                    "num_cameras": 8,
+                    "max_camera_attempts": 4000,
+                    "validation_samples": "all",
+                    "camera_collision_radius_cm": 20.0,
+                    "sequence_warmup_ticks": 1,
+                    "tick_delay_seconds": 2.0,
+                }
             else:
                 raise RuntimeError(f"Unknown BEDLAM camera sampling preset: {PRESET!r}")
-            namespace["generate_validated_orbit_camera_animations_scheduled"](
-                **common_args,
-                **sampler_args,
+            entry_point = (
+                "generate_validated_mixed_camera_layouts_scheduled"
+                if PRESET == "mixed_8"
+                else "generate_validated_orbit_camera_animations_scheduled"
             )
+            namespace[entry_point](**common_args, **sampler_args)
             state["started"] = True
             unreal.log("[linux-camera-wrapper] camera sampling started")
             return
@@ -155,9 +167,10 @@ def tick(_delta_seconds):
         if not output:
             return
         info = output.get("info", {})
-        pending = info.get("pending_sequences", [])
-        completed = info.get("completed_sequences", [])
-        errors = info.get("error_sequences", {})
+        mixed = PRESET == "mixed_8"
+        pending = info.get("pending_groups" if mixed else "pending_sequences", [])
+        completed = info.get("completed_groups" if mixed else "completed_sequences", [])
+        errors = info.get("error_groups" if mixed else "error_sequences", {})
         if not pending:
             if errors:
                 raise RuntimeError(f"Camera sampling completed with errors: {errors}")
@@ -165,17 +178,21 @@ def tick(_delta_seconds):
                 raise RuntimeError("Camera sampling scheduler failed")
             if not completed:
                 raise RuntimeError("Camera sampling produced no completed cameras")
-            stop_sampler = state["sampler_namespace"].get(
-                "stop_scheduled_validated_orbit_camera_generation"
+            stop_name = (
+                "stop_scheduled_validated_mixed_camera_layout_generation"
+                if mixed
+                else "stop_scheduled_validated_orbit_camera_generation"
             )
+            stop_sampler = state["sampler_namespace"].get(stop_name)
             if stop_sampler is not None:
                 stop_sampler()
+            camera_count = sum(1 for key in output if key != "info")
             write_status(
                 "complete",
                 completed_sequences=completed,
-                completed_count=len(completed),
+                completed_count=camera_count,
             )
-            unreal.log(f"[linux-camera-wrapper] complete cameras={len(completed)}")
+            unreal.log(f"[linux-camera-wrapper] complete cameras={camera_count}")
             unreal.unregister_slate_post_tick_callback(state["handle"])
             state["handle"] = None
             quit_editor()
@@ -186,9 +203,12 @@ def tick(_delta_seconds):
         write_status("failed", message=str(exc))
         sampler_namespace = state.get("sampler_namespace")
         if sampler_namespace is not None:
-            stop_sampler = sampler_namespace.get(
-                "stop_scheduled_validated_orbit_camera_generation"
+            stop_name = (
+                "stop_scheduled_validated_mixed_camera_layout_generation"
+                if PRESET == "mixed_8"
+                else "stop_scheduled_validated_orbit_camera_generation"
             )
+            stop_sampler = sampler_namespace.get(stop_name)
             if stop_sampler is not None:
                 try:
                     stop_sampler()

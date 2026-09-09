@@ -27,7 +27,9 @@ values exposed by the installed engine.
 
 import csv
 import datetime
+import json
 import os
+import time
 import traceback
 
 import unreal
@@ -56,6 +58,16 @@ RENDER_DIR = required_environment_path("BEDLAM_RUNTIME_RENDER_DIR")
 START_DELAY_SECONDS = float(
     os.environ.get("BEDLAM_RUNTIME_START_DELAY", "15")
 )
+READY_TIMEOUT_SECONDS = float(
+    os.environ.get("BEDLAM_RUNTIME_READY_TIMEOUT", "300")
+)
+READY_PROBE_INTERVAL_SECONDS = float(
+    os.environ.get("BEDLAM_RUNTIME_READY_PROBE_INTERVAL", "2")
+)
+READY_STABLE_PROBES = int(
+    os.environ.get("BEDLAM_RUNTIME_READY_STABLE_PROBES", "3")
+)
+EXPECTED_MAP = os.environ.get("BEDLAM_RUNTIME_EXPECTED_MAP", "").split(".", 1)[0]
 FORCE_LOOKAT = os.environ.get(
     "BEDLAM_RUNTIME_FORCE_LOOKAT", "0"
 ).lower() in ("1", "true", "yes", "on")
@@ -74,6 +86,11 @@ SEQUENCE_OVERRIDE = os.environ.get(
 CUSTOM_START_FRAME = os.environ.get("BEDLAM_RUNTIME_START_FRAME", "")
 CUSTOM_END_FRAME = os.environ.get("BEDLAM_RUNTIME_END_FRAME", "")
 JOB_LIMIT = int(os.environ.get("BEDLAM_RUNTIME_JOB_LIMIT", "0"))
+JOB_NAME_FILTER = {
+    name.strip()
+    for name in os.environ.get("BEDLAM_RUNTIME_JOB_NAME_FILTER", "").split(",")
+    if name.strip()
+}
 PRESERVE_BEDLAM_LAYOUT = os.environ.get(
     "BEDLAM_RUNTIME_PRESERVE_BEDLAM_LAYOUT", "0"
 ).lower() in ("1", "true", "yes", "on")
@@ -86,9 +103,20 @@ IMAGE_TEMPORAL_SAMPLES = int(os.environ.get(
 WRITE_DONE_MARKERS = os.environ.get(
     "BEDLAM_RUNTIME_WRITE_DONE_MARKERS", "0"
 ).lower() in ("1", "true", "yes", "on")
+SKIP_DONE_SEQUENCES = os.environ.get(
+    "BEDLAM_RUNTIME_SKIP_DONE_SEQUENCES", "0"
+).lower() in ("1", "true", "yes", "on")
 
 RUN_ID = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 CSV_PATH = os.path.join(PROBE_DIR, f"runtime_camera_{RUN_ID}.csv")
+STATUS_PATH = os.path.join(PROBE_DIR, "runtime_render_status.json")
+
+
+def write_runtime_status(status, **values):
+    payload = {"status": status, "run_id": RUN_ID, "queue_asset": QUEUE_ASSET}
+    payload.update(values)
+    with open(STATUS_PATH, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
 
 
 FIELDNAMES = [
@@ -188,6 +216,10 @@ _configured_camera = None
 _configured_controller = None
 _expected_jobs_by_sequence = {}
 _finished_jobs_by_sequence = {}
+_readiness_started_at = time.monotonic()
+_last_readiness_probe_at = None
+_last_readiness_signature = None
+_stable_readiness_probes = 0
 
 
 def safe_call(obj, name, *args):
@@ -344,6 +376,64 @@ def get_game_world():
         unreal.UnrealEditorSubsystem
     )
     return safe_call(editor_subsystem, "get_game_world")
+
+
+def current_editor_map_path(world):
+    if world is None:
+        return ""
+    try:
+        levels = unreal.EditorLevelUtils.get_levels(world)
+        if not levels:
+            return ""
+        return str(
+            unreal.SystemLibrary.get_path_name(
+                unreal.SystemLibrary.get_outer_object(levels[0])
+            )
+        ).split(".", 1)[0]
+    except Exception:
+        return ""
+
+
+def editor_render_readiness():
+    """Return a stable, side-effect-free editor readiness signature."""
+    registry = unreal.AssetRegistryHelpers.get_asset_registry()
+    if registry.is_loading_assets():
+        return False, None, "asset registry is loading"
+
+    editor_subsystem = unreal.get_editor_subsystem(
+        unreal.UnrealEditorSubsystem
+    )
+    world = safe_call(editor_subsystem, "get_editor_world")
+    if world is None:
+        return False, None, "editor world is unavailable"
+
+    current_map = current_editor_map_path(world)
+    if EXPECTED_MAP and current_map != EXPECTED_MAP:
+        return (
+            False,
+            None,
+            f"current map is {current_map!r}, expected {EXPECTED_MAP!r}",
+        )
+
+    queue_asset = unreal.load_asset(QUEUE_ASSET)
+    if queue_asset is None:
+        return False, None, f"queue asset is unavailable: {QUEUE_ASSET}"
+
+    actors = list(
+        unreal.get_editor_subsystem(
+            unreal.EditorActorSubsystem
+        ).get_all_level_actors()
+    )
+    target_present = any(object_name(actor) == TARGET_LABEL for actor in actors)
+    if not target_present:
+        return False, None, f"required actor is unavailable: {TARGET_LABEL}"
+
+    signature = (current_map, len(actors), object_name(queue_asset))
+    detail = (
+        f"map={current_map}, actors={len(actors)}, "
+        f"queue={object_name(queue_asset)}"
+    )
+    return True, signature, detail
 
 
 def runtime_actors(world):
@@ -841,6 +931,7 @@ def on_queue_finished(executor, success):
         f"render_dir={RENDER_DIR}"
     )
     _executor = None
+    write_runtime_status("complete" if success else "failed", success=bool(success))
     unregister_tick()
     close_csv()
     quit_editor()
@@ -882,6 +973,62 @@ def start_render():
     jobs = subsystem.get_queue().get_jobs()
     if not jobs:
         raise RuntimeError("The saved MRQ queue contains no jobs")
+
+    if SKIP_DONE_SEQUENCES:
+        queue = subsystem.get_queue()
+        marker_dir = os.path.join(RENDER_DIR, "post_ready")
+        processed_dir = os.path.join(RENDER_DIR, ".post_render_processed")
+        skipped_sequences = set()
+        for job in list(jobs):
+            job_name = str(safe_property(job, "job_name"))
+            sequence_name = get_sequence_base_name(job_name)
+            marker_path = os.path.join(
+                marker_dir, f"{sequence_name}.done"
+            )
+            processed_path = os.path.join(
+                processed_dir, f"{sequence_name}.done"
+            )
+            if os.path.isfile(marker_path) or os.path.isfile(processed_path):
+                queue.delete_job(job)
+                skipped_sequences.add(sequence_name)
+        jobs = queue.get_jobs()
+        if skipped_sequences:
+            unreal.log_warning(
+                "[RUNTIME_PROBE] Skipping completed sequences: "
+                + ", ".join(sorted(skipped_sequences))
+            )
+        if not jobs:
+            unreal.log_warning(
+                "[RUNTIME_PROBE] No MRQ jobs remain after done-marker filtering"
+            )
+            unregister_tick()
+            close_csv()
+            write_runtime_status("complete", success=True, no_jobs_remaining=True)
+            quit_editor()
+            return
+
+    if JOB_NAME_FILTER:
+        queue = subsystem.get_queue()
+        available_job_names = {
+            str(safe_property(job, "job_name")) for job in jobs
+        }
+        unknown_job_names = JOB_NAME_FILTER - available_job_names
+        if unknown_job_names:
+            raise RuntimeError(
+                "Requested MRQ job names are unavailable: "
+                + ", ".join(sorted(unknown_job_names))
+                + "; available jobs: "
+                + ", ".join(sorted(available_job_names))
+            )
+        for job in list(jobs):
+            job_name = str(safe_property(job, "job_name"))
+            if job_name not in JOB_NAME_FILTER:
+                queue.delete_job(job)
+        jobs = queue.get_jobs()
+        unreal.log_warning(
+            "[RUNTIME_PROBE] Exact MRQ job filter: "
+            + ", ".join(sorted(JOB_NAME_FILTER))
+        )
 
     if JOB_LIMIT > 0:
         queue = subsystem.get_queue()
@@ -978,18 +1125,48 @@ def start_render():
 
 def tick(delta_seconds):
     global _started
+    global _last_readiness_probe_at
+    global _last_readiness_signature
+    global _stable_readiness_probes
     try:
         if not _started:
-            now = safe_call(
-                unreal.SystemLibrary,
-                "get_game_time_in_seconds",
-                None,
-            )
-            # SystemLibrary time may be unavailable outside a world; use the
-            # monotonic start value maintained by the Editor tick deltas.
             tick.elapsed = getattr(tick, "elapsed", 0.0) + delta_seconds
             if tick.elapsed < START_DELAY_SECONDS:
                 return
+
+            now = time.monotonic()
+            if now - _readiness_started_at >= READY_TIMEOUT_SECONDS:
+                raise RuntimeError(
+                    "Timed out waiting for render readiness after "
+                    f"{now - _readiness_started_at:.1f}s; "
+                    f"stable={_stable_readiness_probes}/"
+                    f"{READY_STABLE_PROBES}"
+                )
+            if (
+                _last_readiness_probe_at is not None
+                and now - _last_readiness_probe_at
+                < READY_PROBE_INTERVAL_SECONDS
+            ):
+                return
+
+            ready, signature, detail = editor_render_readiness()
+            _last_readiness_probe_at = now
+            if ready and signature == _last_readiness_signature:
+                _stable_readiness_probes += 1
+            elif ready:
+                _last_readiness_signature = signature
+                _stable_readiness_probes = 1
+            else:
+                _last_readiness_signature = None
+                _stable_readiness_probes = 0
+            unreal.log_warning(
+                "[RUNTIME_PROBE] Render readiness: "
+                f"stable={_stable_readiness_probes}/"
+                f"{READY_STABLE_PROBES}; {detail}"
+            )
+            if _stable_readiness_probes < READY_STABLE_PROBES:
+                return
+
             _started = True
             start_render()
             return
@@ -998,6 +1175,7 @@ def tick(delta_seconds):
     except Exception:
         error = traceback.format_exc()
         unreal.log_error("[RUNTIME_PROBE] Tick failed:\n" + error)
+        write_runtime_status("failed", error=error)
         if _writer is not None:
             try:
                 _writer.writerow({"error": error})
@@ -1010,19 +1188,23 @@ def tick(delta_seconds):
 
 
 try:
+    os.makedirs(PROBE_DIR, exist_ok=True)
+    write_runtime_status("running")
     _tick_handle = unreal.register_slate_post_tick_callback(tick)
     unreal.log_warning(
         "[RUNTIME_PROBE] Loaded; "
-        f"waiting {START_DELAY_SECONDS:.1f}s before PIE MRQ. "
+        f"minimum_delay={START_DELAY_SECONDS:.1f}s before PIE MRQ, "
+        f"expected_map={EXPECTED_MAP}, "
+        f"stable_probes={READY_STABLE_PROBES}, "
         f"force_lookat={FORCE_LOOKAT}, "
         f"tick_group_fix={TICK_GROUP_FIX}, "
         f"tick_prerequisite_fix={TICK_PREREQUISITE_FIX}, "
         f"csv={CSV_PATH}, render_dir={RENDER_DIR}"
     )
 except Exception:
-    unreal.log_error(
-        "[RUNTIME_PROBE] Startup failed:\n" + traceback.format_exc()
-    )
+    error = traceback.format_exc()
+    unreal.log_error("[RUNTIME_PROBE] Startup failed:\n" + error)
+    write_runtime_status("failed", error=error)
     unregister_tick()
     close_csv()
     quit_editor()

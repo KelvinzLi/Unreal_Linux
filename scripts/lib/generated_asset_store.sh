@@ -30,3 +30,27 @@ ensure_generated_asset_link() {
 
     ln -s "$resolved_store" "$project_path"
 }
+
+# Fail before Unreal starts if a project-global generated-asset link does not
+# resolve to the scene-specific store expected by the caller.
+verify_generated_asset_link() {
+    local project_path=$1
+    local store_path=$2
+    local current_target
+    local resolved_store
+
+    if [[ ! -L "$project_path" ]]; then
+        echo "ERROR: Generated asset path is not a symlink: $project_path" >&2
+        return 1
+    fi
+
+    current_target="$(readlink -f "$project_path" 2>/dev/null || true)"
+    resolved_store="$(readlink -f "$store_path" 2>/dev/null || true)"
+    if [[ -z "$resolved_store" || "$current_target" != "$resolved_store" ]]; then
+        echo "ERROR: Generated asset link targets the wrong store:" >&2
+        echo "  link:     $project_path" >&2
+        echo "  actual:   ${current_target:-<unresolved>}" >&2
+        echo "  expected: ${resolved_store:-<unresolved>}" >&2
+        return 1
+    fi
+}

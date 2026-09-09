@@ -73,7 +73,7 @@ MRQ_WRAPPER="$REPO_ROOT/python/run_create_movie_render_queue.py"
 
 export BEDLAM_COMBINED_LEVEL_WRAPPER="$REPO_ROOT/python/run_create_level_sequences_csv.py"
 export BEDLAM_COMBINED_MRQ_WRAPPER="$REPO_ROOT/python/run_create_movie_render_queue.py"
-export BEDLAM_LEVEL_SEQUENCE_SCRIPT="$UE_ROOT/Engine/Content/PS/Bedlam/Core/Python/create_level_sequences_csv.py"
+export BEDLAM_LEVEL_SEQUENCE_SCRIPT="${BEDLAM_LEVEL_SEQUENCE_SCRIPT:-$UE_ROOT/Engine/Content/PS/Bedlam/Core/Python/create_level_sequences_csv.py}"
 export BEDLAM_LEVEL_SEQUENCE_CSV_PATH="$CSV"
 export BEDLAM_LEVEL_SEQUENCE_STATUS_DIR="$DATASET_DIR"
 export BEDLAM_LEVEL_SEQUENCE_CAMERA_TYPE="Default"
@@ -137,10 +137,18 @@ if [[ "$MRQ_ONLY" -eq 1 ]]; then
 else
     rm -f -- "$BEDLAM_LEVEL_SEQUENCE_STATUS_PATH" "$BEDLAM_MRQ_STATUS_PATH"
 fi
-RUN_TAG="${SLURM_JOB_ID:-manual}_$(date +%Y%m%d_%H%M%S)"
+RUN_TAG="${SLURM_JOB_ID:-manual}_$$_$(date +%Y%m%d_%H%M%S)"
 ZEN_DIR="/tmp/${USER}/unreal_zen_5.3.2_combined_${RUN_TAG}"
-DDC_DIR="/tmp/${USER}/unreal_ddc_5.3.2"
-mkdir -p "$ZEN_DIR" "$DDC_DIR"
+DDC_DIR="${UE_LocalDataCachePath:-/tmp/${USER}/unreal_ddc_5.3.2}"
+export UE_LocalDataCachePath="$DDC_DIR"
+UE_USER_DIR="${BEDLAM_UE_USER_DIR:-/tmp/${USER}/unreal_user_5.3.2_combined_${RUN_TAG}}"
+export XDG_CONFIG_HOME="${BEDLAM_XDG_CONFIG_HOME:-$UE_USER_DIR/.config}"
+mkdir -p "$ZEN_DIR" "$DDC_DIR" "$UE_USER_DIR" "$XDG_CONFIG_HOME"
+SHARED_DDC_ARGS=()
+if [[ -n "${BEDLAM_SHARED_DDC_PATH:-}" ]]; then
+    mkdir -p "$BEDLAM_SHARED_DDC_PATH"
+    SHARED_DDC_ARGS+=("-SharedDataCachePath=$BEDLAM_SHARED_DDC_PATH")
+fi
 
 echo "Project:    $PROJECT"
 echo "Map:        $MAP"
@@ -149,6 +157,8 @@ echo "Assets:     $ASSET_STORE"
 echo "Render out: $OUTPUT_DIR"
 echo "MRQ preset: $BEDLAM_MRQ_PRESET ($BEDLAM_MRQ_RESOLUTION)"
 echo "Legacy motion blur: $BEDLAM_MRQ_LEGACY_MOTION_BLUR"
+echo "Shared DDC: ${BEDLAM_SHARED_DDC_PATH:-disabled}"
+echo "Unreal user directory: $UE_USER_DIR"
 echo "Expected:   $EXPECTED_SEQUENCES sequences, $EXPECTED_JOBS MRQ jobs"
 echo "Mode:       $([[ "$MRQ_ONLY" -eq 1 ]] && echo MRQ-only || echo LevelSequence+MRQ)"
 
@@ -164,6 +174,8 @@ echo "Mode:       $([[ "$MRQ_ONLY" -eq 1 ]] && echo MRQ-only || echo LevelSequen
     -ResY=360 \
     "-ZenDataPath=$ZEN_DIR" \
     "-LocalDataCachePath=$DDC_DIR" \
+    "${SHARED_DDC_ARGS[@]}" \
+    "-UserDir=$UE_USER_DIR" \
     -stdout \
     -FullStdOutLogOutput
 

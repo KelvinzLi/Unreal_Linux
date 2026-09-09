@@ -33,10 +33,24 @@ def env_bool(name, default=False):
     raise ValueError(f"Invalid Boolean value for {name}: {value}")
 
 
+def env_int_pair(name):
+    value = env(name)
+    if value is None:
+        return None
+    parts = [part.strip() for part in value.split(",")]
+    if len(parts) != 2:
+        raise ValueError(f"{name} must be MIN,MAX; got: {value}")
+    bounds = tuple(int(part) for part in parts)
+    if not 0 <= bounds[0] <= bounds[1]:
+        raise ValueError(f"{name} must satisfy 0 <= MIN <= MAX; got: {value}")
+    return bounds
+
+
 CSV_PATH = os.path.abspath(env("BEDLAM_SIM_CSV_PATH"))
 OUTPUT_DIR = os.path.abspath(env("BEDLAM_SIM_OUTPUT_DIR"))
 THROW_BATCH_SCRIPT = os.path.abspath(env("BEDLAM_SIM_BATCH_SCRIPT"))
 STATUS_PATH = os.path.join(OUTPUT_DIR, "linux_simulation_status.json")
+NUM_THROW_OBJECTS_RANGE = env_int_pair("BEDLAM_SIM_NUM_THROW_OBJECTS_RANGE")
 
 
 def write_status(status, message=None):
@@ -46,6 +60,7 @@ def write_status(status, message=None):
         "csv_path": CSV_PATH,
         "output_dir": OUTPUT_DIR,
         "batch_script": THROW_BATCH_SCRIPT,
+        "num_throw_objects_range": NUM_THROW_OBJECTS_RANGE,
     }
     if message:
         payload["message"] = str(message)
@@ -82,12 +97,35 @@ def start():
     batch["run_batch"](
         csv_path=CSV_PATH,
         output_dir=OUTPUT_DIR,
-        num_throw_objects=env_int("BEDLAM_SIM_NUM_THROW_OBJECTS", 20),
+        num_throw_objects=(
+            None
+            if NUM_THROW_OBJECTS_RANGE is not None
+            else env_int("BEDLAM_SIM_NUM_THROW_OBJECTS", 20)
+        ),
+        num_throw_objects_range=NUM_THROW_OBJECTS_RANGE,
         scale_multiplier=env_float("BEDLAM_SIM_SCALE_MULTIPLIER", 0.5),
         physics_substepping=env_bool("BEDLAM_SIM_PHYSICS_SUBSTEPPING", True),
         physics_substep_fps=env_float("BEDLAM_SIM_PHYSICS_SUBSTEP_FPS", 480.0),
         physics_max_substeps=env_int("BEDLAM_SIM_PHYSICS_MAX_SUBSTEPS", 32),
+        fixed_step_fps=(
+            None
+            if env("BEDLAM_SIM_FIXED_STEP_FPS") in (None, "0")
+            else env_float("BEDLAM_SIM_FIXED_STEP_FPS", 30.0)
+        ),
+        preinitialize_sequence_player=env_bool(
+            "BEDLAM_SIM_PREINITIALIZE_SEQUENCE_PLAYER", False
+        ),
         max_resimulation_attempts=env_int("BEDLAM_SIM_MAX_RESIMULATION_ATTEMPTS", 8),
+        rerun_on_bad_speed=env_bool("BEDLAM_SIM_RERUN_ON_BAD_SPEED", False),
+        bad_speed_early_median_cm_s=env_float(
+            "BEDLAM_SIM_BAD_SPEED_EARLY_MEDIAN_CM_S", 240.0
+        ),
+        bad_speed_early_gap_end_frame=env_int(
+            "BEDLAM_SIM_BAD_SPEED_EARLY_GAP_END_FRAME", 15
+        ),
+        bad_speed_min_early_gap_frames=env_int(
+            "BEDLAM_SIM_BAD_SPEED_MIN_EARLY_GAP_FRAMES", 6
+        ),
         seed=env_int("BEDLAM_SIM_SEED", 12345),
         limit=(
             None

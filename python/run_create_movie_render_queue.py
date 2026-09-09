@@ -207,16 +207,17 @@ def tick(_delta_seconds):
                     frame_step,
                     (width, height),
                     "WorldSpace",
-                    LEGACY_MOTION_BLUR,
+                    False,
                 )
             elif "DepthMask" in preset_parts:
+                # Geometry passes must remain sharp even when RGB uses motion blur.
                 namespace["add_render_job_exr_depthmask"](
                     pipeline_queue,
                     asset_data,
                     frame_step,
                     (width, height),
                     None,
-                    LEGACY_MOTION_BLUR,
+                    False,
                 )
 
         namespace["save_movie_render_queue"](
