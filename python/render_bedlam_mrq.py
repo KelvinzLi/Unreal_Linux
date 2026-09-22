@@ -214,6 +214,7 @@ _cached_world = None
 _cached_actors = {}
 _configured_camera = None
 _configured_controller = None
+_configured_target_dependencies = []
 _expected_jobs_by_sequence = {}
 _finished_jobs_by_sequence = {}
 _readiness_started_at = time.monotonic()
@@ -462,6 +463,26 @@ def find_runtime_actor(actors, label):
     return candidates[0] if candidates else None
 
 
+def ensure_target_tick_prerequisite(camera, target):
+    # A socket-attached look-at target moves when its skeletal component ticks.
+    # Camera interpolation must see that updated socket position in both passes.
+    parent = target.get_attach_parent_actor() if target is not None else None
+    component = (
+        parent.get_component_by_class(unreal.SkeletalMeshComponent)
+        if parent is not None else None
+    )
+    if camera is None or component is None:
+        return
+    if any(c == camera and s == component for c, s in _configured_target_dependencies):
+        return
+    camera.add_tick_prerequisite_component(component)
+    _configured_target_dependencies.append((camera, component))
+    unreal.log_warning(
+        f"[RUNTIME_PROBE] Added skeletal component -> camera tick prerequisite: "
+        f"{component.get_path_name()} -> {camera.get_path_name()}"
+    )
+
+
 def get_runtime_probe_actors(world):
     global _cached_world
     global _cached_actors
@@ -469,8 +490,21 @@ def get_runtime_probe_actors(world):
     global _configured_controller
 
     if world != _cached_world:
-        actors = runtime_actors(world)
+        # RGB/depth and subsequent jobs create new runtime objects, even when
+        # actor names are reused. Reset bookkeeping between PIE worlds.
+        _configured_target_dependencies.clear()
         _cached_world = world
+        _cached_actors = {}
+        _configured_camera = None
+        _configured_controller = None
+
+    # The first PIE world can be visible before its camera/target actors spawn.
+    # Do not cache that incomplete discovery for the entire first RGB job.
+    if (
+        _cached_actors.get("camera") is None
+        or _cached_actors.get("target") is None
+    ):
+        actors = runtime_actors(world)
         _cached_actors = {
             "camera": find_runtime_actor(actors, CAMERA_LABEL),
             "target": find_runtime_actor(actors, TARGET_LABEL),
@@ -513,6 +547,7 @@ def get_runtime_probe_actors(world):
                 "[RUNTIME_PROBE] Added PlayerController -> camera "
                 "tick prerequisite"
             )
+        ensure_target_tick_prerequisite(camera, _cached_actors.get("target"))
     return _cached_actors
 
 
