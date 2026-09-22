@@ -151,6 +151,9 @@ def tick(_delta_seconds):
                     "sequence_warmup_ticks": 1,
                     "tick_delay_seconds": 2.0,
                 }
+                motion_reference = os.environ.get("BEDLAM_CAMERA_MOTION_REFERENCE_FRAMES")
+                if motion_reference:
+                    sampler_args["motion_reference_frames"] = int(motion_reference)
             else:
                 raise RuntimeError(f"Unknown BEDLAM camera sampling preset: {PRESET!r}")
             entry_point = (
