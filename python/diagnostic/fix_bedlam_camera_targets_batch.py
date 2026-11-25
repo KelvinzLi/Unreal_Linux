@@ -36,25 +36,36 @@ def repair_map(map_path):
 
     settings = camera.get_editor_property("lookat_tracking_settings")
     before = settings.get_editor_property("actor_to_track")
-    changed = before != target
+    enabled_before = settings.get_editor_property("enable_look_at_tracking")
+    changed = before != target or not enabled_before
     if changed:
         settings.set_editor_property("actor_to_track", target)
+        settings.set_editor_property("enable_look_at_tracking", True)
         camera.set_editor_property("lookat_tracking_settings", settings)
         if not unreal.EditorLevelLibrary.save_current_level():
             raise RuntimeError("Failed to save map: {}".format(map_path))
 
-    after = camera.get_editor_property(
-        "lookat_tracking_settings"
-    ).get_editor_property("actor_to_track")
-    if after != target:
-        raise RuntimeError("Actor To Track verification failed: {}".format(map_path))
+    verified_settings = camera.get_editor_property("lookat_tracking_settings")
+    after = verified_settings.get_editor_property("actor_to_track")
+    enabled_after = verified_settings.get_editor_property("enable_look_at_tracking")
+    if after != target or not enabled_after:
+        raise RuntimeError(
+            "Look-at verification failed: {} actor={} enabled={}".format(
+                map_path,
+                after.get_actor_label() if after else None,
+                enabled_after,
+            )
+        )
 
     unreal.log_warning(
-        "[CAMERA_TARGET_BATCH] map={} changed={} before={} after={} verified=True".format(
+        "[CAMERA_TARGET_BATCH] map={} changed={} before={} after={} "
+        "enabled_before={} enabled_after={} verified=True".format(
             map_path,
             changed,
             before.get_actor_label() if before else None,
             after.get_actor_label(),
+            enabled_before,
+            enabled_after,
         )
     )
 
