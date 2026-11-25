@@ -12,6 +12,12 @@
 : "${BEDLAM_OUTPUT_ROOT:=/absolute/path/to/render_outputs}"
 : "${BEDLAM_LOG_ROOT:=/absolute/path/to/unreal_logs}"
 
+# Optional persistent shared DDC. Leave empty to disable it. Keep the local
+# DDC on each node's fast temporary disk, not the home filesystem.
+: "${BEDLAM_SHARED_DDC_PATH:=}"
+: "${UE_LocalDataCachePath:=/tmp/${USER}/unreal_ddc_5.3.2}"
+export BEDLAM_SHARED_DDC_PATH UE_LocalDataCachePath
+
 # Optional paths used by installation, post-processing, and historical
 # troubleshooting examples in LINUX_PIPELINE_RUNBOOK.md.
 : "${CONDA_ROOT:=/absolute/path/to/miniconda3}"

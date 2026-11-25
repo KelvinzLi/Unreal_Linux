@@ -62,6 +62,11 @@ tested project configuration. Background and dependency analysis are in
 
 ### BEDLAM camera-shake plugin
 
+The source for this small C++ plugin originally came from the uploaded BEDLAM
+project's `Plugins/BEDLAM` directory. It was compiled for Linux UE 5.3.2 and
+then installed engine-wide. Recipients should install the complete tested Linux
+package described here rather than copying the original Windows binaries.
+
 Copy the complete tested Linux plugin into the matching engine path:
 
 ```text
@@ -83,6 +88,12 @@ each project that uses camera shake. Build history is in
 [runbook section 4](LINUX_PIPELINE_RUNBOOK.md#4-bedlam-camera-shake-plugin).
 
 ### Modified MovieRenderPipeline
+
+The source modifications originally came from the uploaded BEDLAM project's
+`Plugins/MovieRenderPipeline` directory. That directory is a modified copy of
+Unreal's full built-in plugin and uses the same plugin and module names. Its
+modified source was integrated into the UE 5.3.2 engine plugin, and the
+required modules were compiled for Linux.
 
 BEDLAM's modified engine plugin provides centre-temporal-sample camera metadata
 and the corrected Linux EXR mask/depth channel names. Install the complete
